@@ -8,10 +8,16 @@ import pytest
 from curbflow.features.novel_features import (
     add_evidence_quality_features,
     add_hidden_junction_basin_features,
+    add_place_type_and_road_corridor_features,
+    add_place_type_features,
+    add_repeat_vehicle_features,
     build_junction_basin_table,
+    build_road_corridor_zone_time_features,
     compute_patrol_myopia_table,
+    extract_road_name,
     normalized_zone_entropy,
     write_patrol_myopia_table,
+    write_repeat_vehicle_zone_time_table,
     write_junction_basin_table,
 )
 
@@ -221,3 +227,207 @@ def test_patrol_myopia_table_can_be_saved_to_parquet(tmp_path) -> None:
 
     assert output_path.exists()
     assert len(pd.read_parquet(output_path)) == len(table)
+
+
+def _repeat_vehicle_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "vehicle_number": [
+                "KA01AA0001",
+                "KA01AA0002",
+                "KA01AA0001",
+                "KA01AA0001",
+                "KA01AA0002",
+                "KA01AA0003",
+            ],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-20T08:30:00+05:30",
+                "2023-11-20T10:00:00+05:30",
+                "2023-11-20T13:00:00+05:30",
+                "2023-11-20T16:00:00+05:30",
+                "2023-11-20T17:00:00+05:30",
+            ],
+            "zone_id": ["zone_a", "zone_a", "zone_a", "zone_b", "zone_a", "zone_c"],
+            "police_station": [
+                "station_1",
+                "station_1",
+                "station_1",
+                "station_2",
+                "station_1",
+                "station_3",
+            ],
+        }
+    )
+
+
+def test_repeat_vehicle_features_count_repeated_vehicles_correctly() -> None:
+    scored = add_repeat_vehicle_features(_repeat_vehicle_frame())
+    vehicle_1 = scored[scored["vehicle_number"] == "KA01AA0001"].iloc[0]
+    vehicle_3 = scored[scored["vehicle_number"] == "KA01AA0003"].iloc[0]
+
+    assert bool(vehicle_1["repeat_vehicle_flag"]) is True
+    assert vehicle_1["vehicle_total_records"] == 3
+    assert vehicle_1["vehicle_unique_zones"] == 2
+    assert vehicle_1["vehicle_unique_stations"] == 2
+    assert bool(vehicle_1["multi_zone_repeat_flag"]) is True
+    assert bool(vehicle_1["multi_station_repeat_flag"]) is True
+    assert bool(vehicle_3["repeat_vehicle_flag"]) is False
+    assert pd.notna(vehicle_1["anonymized_vehicle_id"])
+    assert vehicle_1["anonymized_vehicle_id"] != "KA01AA0001"
+
+
+def test_repeat_vehicle_features_do_not_leak_future_rows() -> None:
+    shuffled = pd.DataFrame(
+        {
+            "vehicle_number": ["KA01AA9999", "KA01AA9999"],
+            "created_datetime_ist": [
+                "2023-11-20T14:00:00+05:30",
+                "2023-11-20T08:00:00+05:30",
+            ],
+            "zone_id": ["zone_a", "zone_a"],
+            "police_station": ["station_1", "station_1"],
+        }
+    )
+
+    scored = add_repeat_vehicle_features(shuffled)
+
+    assert bool(scored.loc[1, "same_vehicle_same_zone_repeat_6h"]) is False
+    assert bool(scored.loc[0, "same_vehicle_same_zone_repeat_6h"]) is True
+
+
+def test_repeat_vehicle_six_hour_same_and_different_zone_logic() -> None:
+    scored = add_repeat_vehicle_features(_repeat_vehicle_frame())
+
+    assert bool(scored.loc[2, "same_vehicle_same_zone_repeat_6h"]) is True
+    assert bool(scored.loc[2, "same_vehicle_different_zone_6h"]) is False
+    assert bool(scored.loc[3, "same_vehicle_same_zone_repeat_6h"]) is False
+    assert bool(scored.loc[3, "same_vehicle_different_zone_6h"]) is True
+    assert bool(scored.loc[4, "same_vehicle_same_zone_repeat_6h"]) is False
+
+
+def test_repeat_vehicle_zone_time_aggregate_excludes_vehicle_ids(tmp_path) -> None:
+    output_path = tmp_path / "repeat_vehicle_zone_time.parquet"
+
+    table = write_repeat_vehicle_zone_time_table(_repeat_vehicle_frame(), output_path)
+    zone_a_repeat_window = table[
+        (table["zone_id"] == "zone_a")
+        & (table["time_window_start"] == pd.Timestamp("2023-11-20T09:00:00+05:30"))
+    ].iloc[0]
+
+    assert output_path.exists()
+    assert "anonymized_vehicle_id" not in table.columns
+    assert "vehicle_number" not in table.columns
+    assert zone_a_repeat_window["repeat_vehicle_count"] == 1
+    assert zone_a_repeat_window["repeat_vehicle_share"] == pytest.approx(1.0)
+    assert zone_a_repeat_window["same_vehicle_same_zone_6h_count"] == 1
+    assert zone_a_repeat_window["persistence_score"] == pytest.approx(1.0)
+    assert 0.0 <= zone_a_repeat_window["repeat_vehicle_zone_entropy"] <= 1.0
+
+
+def test_place_type_flags_and_priority_use_location_and_junction_text() -> None:
+    frame = pd.DataFrame(
+        {
+            "location": [
+                "Metro station near shopping mall",
+                "City Hospital Main Road",
+                "Temple Layout",
+                "Unknown stretch",
+            ],
+            "junction_name": [
+                "Terminal Junction",
+                "College Signal",
+                "Mandir Cross",
+                "No Junction",
+            ],
+        }
+    )
+
+    scored = add_place_type_features(frame)
+
+    assert bool(scored.loc[0, "transit_node"]) is True
+    assert bool(scored.loc[0, "commercial_market"]) is True
+    assert scored.loc[0, "place_type_primary"] == "transit"
+    assert bool(scored.loc[1, "institutional"]) is True
+    assert scored.loc[1, "place_type_primary"] == "institutional"
+    assert bool(scored.loc[2, "religious_place"]) is True
+    assert bool(scored.loc[2, "residential_layout"]) is True
+    assert scored.loc[2, "place_type_primary"] == "religious"
+    assert scored.loc[3, "place_type_primary"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("location", "expected"),
+    [
+        ("#42 MG Rd., Bengaluru", "mg road"),
+        ("No. 12/4 Outer Ring Rd, Near Mall", "outer ring road"),
+        ("100 Feet Road, Indiranagar", "feet road"),
+        ("  Brigade ROAD!!!, signal", "brigade road"),
+        (pd.NA, "unknown"),
+    ],
+)
+def test_road_name_extraction_normalizes_first_location_segment(location, expected) -> None:
+    assert extract_road_name(location) == expected
+
+
+def _place_corridor_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "zone_id": ["zone_a", "zone_a", "zone_a", "zone_b"],
+            "location": [
+                "MG Rd, Commercial Market",
+                "MG Road, Metro Station",
+                "Outer Ring Rd, School",
+                "Outer Ring Road, Airport",
+            ],
+            "junction_name": [
+                "Mall Junction",
+                "Metro Junction",
+                "College Signal",
+                "Airport Terminal",
+            ],
+            "vehicle_type": ["car", "BMTC bus", "lorry", "scooter"],
+            "updated_vehicle_type": ["", "", "", ""],
+            "violation_type": [
+                "WRONG PARKING",
+                "PARKING IN A MAIN ROAD",
+                "PARKING IN A MAIN ROAD",
+                "WRONG PARKING",
+            ],
+            "row_obstruction_score": [10.0, 20.0, 30.0, 40.0],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-21T08:00:00+05:30",
+                "2023-11-22T08:00:00+05:30",
+                "2023-12-05T08:00:00+05:30",
+            ],
+        }
+    )
+
+
+def test_road_corridor_features_compute_corridor_stats() -> None:
+    scored = add_place_type_and_road_corridor_features(_place_corridor_frame())
+    mg = scored[scored["road_corridor_id"] == "mg road"].iloc[0]
+    outer_ring = scored[scored["road_corridor_id"] == "outer ring road"].iloc[0]
+
+    assert mg["corridor_record_count"] == 2
+    assert mg["corridor_pfdi"] == pytest.approx(30.0)
+    assert mg["corridor_large_vehicle_share"] == pytest.approx(0.5)
+    assert mg["corridor_main_road_parking_share"] == pytest.approx(0.5)
+    assert mg["corridor_recent_pfdi"] == pytest.approx(0.0)
+    assert scored.loc[1, "corridor_rolling_7d_pfdi"] == pytest.approx(30.0)
+    assert outer_ring["corridor_recent_pfdi"] == pytest.approx(40.0)
+
+
+def test_road_corridor_zone_time_features_include_place_context() -> None:
+    zone_time = build_road_corridor_zone_time_features(_place_corridor_frame())
+    mg_morning = zone_time[
+        (zone_time["zone_id"] == "zone_a")
+        & (zone_time["road_corridor_id"] == "mg road")
+        & (zone_time["place_type_primary"] == "commercial")
+    ].iloc[0]
+
+    assert bool(mg_morning["commercial_market"]) is True
+    assert "corridor_recent_pfdi" in zone_time.columns
+    assert "place_type_primary" in zone_time.columns
+    assert "road_corridor_id" in zone_time.columns

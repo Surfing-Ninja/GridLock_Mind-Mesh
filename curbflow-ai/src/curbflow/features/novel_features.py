@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+import re
+import string
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,10 +20,49 @@ EVIDENCE_TRUST_ALPHA = 100.0
 VALIDATED_STATUSES = {"approved", "created1", "processing", "rejected", "duplicate"}
 JUNCTION_BASINS_PATH = Path("data/processed/junction_basins.parquet")
 PATROL_MYOPIA_PATH = Path("data/processed/patrol_myopia.parquet")
+REPEAT_VEHICLE_ZONE_TIME_PATH = Path("data/processed/repeat_vehicle_zone_time.parquet")
 JUNCTION_BASIN_THRESHOLD_M = 500.0
 EARTH_RADIUS_M = 6_371_000.0
 NO_JUNCTION_VALUES = {"no junction", "nojunction", "none", "unknown", "null"}
 EPSILON = 1e-9
+REPEAT_VEHICLE_WINDOW_HOURS = 6
+PLACE_TYPE_FLAGS = {
+    "commercial_market": (
+        "market",
+        "mall",
+        "plaza",
+        "commercial",
+        "shopping",
+        "complex",
+        "bazaar",
+    ),
+    "transit_node": ("metro", "bus", "railway", "station", "terminal"),
+    "institutional": ("school", "college", "university", "hospital"),
+    "airport_zone": ("airport",),
+    "religious_place": ("temple", "mosque", "church", "mandir"),
+    "residential_layout": ("layout", "nagar", "colony", "residential", "cross", "main"),
+    "entertainment": ("theatre", "cinema", "stadium"),
+}
+PLACE_TYPE_PRIORITY = (
+    ("transit_node", "transit"),
+    ("institutional", "institutional"),
+    ("commercial_market", "commercial"),
+    ("airport_zone", "airport"),
+    ("entertainment", "entertainment"),
+    ("religious_place", "religious"),
+    ("residential_layout", "residential"),
+)
+LARGE_VEHICLE_TERMS = (
+    "hgv",
+    "lorry",
+    "tanker",
+    "bus",
+    "lgv",
+    "tempo",
+    "mini lorry",
+    "maxi cab",
+    "van",
+)
 
 
 @dataclass(frozen=True)
@@ -673,3 +715,447 @@ def write_patrol_myopia_table(
     destination.parent.mkdir(parents=True, exist_ok=True)
     myopia_table.to_parquet(destination, index=False)
     return myopia_table
+
+
+def _normalise_vehicle_number(value: Any) -> Any:
+    """Normalize vehicle numbers for grouping while preserving missing values."""
+
+    normalized = normalize_text_value(value)
+    if pd.isna(normalized):
+        return pd.NA
+    compact = "".join(str(normalized).upper().split())
+    return compact if compact else pd.NA
+
+
+def anonymize_vehicle_number(value: Any) -> Any:
+    """Create a stable anonymous vehicle identifier for internal feature joins."""
+
+    normalized = _normalise_vehicle_number(value)
+    if pd.isna(normalized):
+        return pd.NA
+    return hashlib.sha256(str(normalized).encode("utf-8")).hexdigest()
+
+
+def _normalise_repeat_dimension(frame: pd.DataFrame, column: str) -> pd.Series:
+    """Normalize optional repeat-vehicle dimensions with unknown as a grouping bucket."""
+
+    if column not in frame.columns:
+        return pd.Series(["unknown"] * len(frame), index=frame.index, dtype="object")
+    return frame[column].map(lambda value: normalize_text_value(value, unknown_for_null=True))
+
+
+def add_repeat_vehicle_features(
+    frame: pd.DataFrame,
+    *,
+    vehicle_column: str = "vehicle_number",
+    zone_column: str = "zone_id",
+    station_column: str = "police_station",
+    datetime_column: str = "created_datetime_ist",
+    window_hours: int = REPEAT_VEHICLE_WINDOW_HOURS,
+) -> pd.DataFrame:
+    """Add anonymized repeat-vehicle intelligence without future leakage."""
+
+    required = {vehicle_column, datetime_column}
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(f"Missing columns for repeat vehicle features: {sorted(missing)}")
+
+    result = frame.copy()
+    result["anonymized_vehicle_id"] = result[vehicle_column].map(anonymize_vehicle_number)
+    result["_repeat_vehicle_valid"] = result["anonymized_vehicle_id"].notna()
+    result["_repeat_zone_key"] = _normalise_repeat_dimension(result, zone_column)
+    result["_repeat_station_key"] = _normalise_repeat_dimension(result, station_column)
+    result["_repeat_created_time"] = pd.to_datetime(
+        result[datetime_column],
+        errors="coerce",
+        utc=True,
+    )
+    result["_repeat_local_day"] = pd.to_datetime(
+        result[datetime_column],
+        errors="coerce",
+    ).dt.date
+
+    valid = result[result["_repeat_vehicle_valid"]]
+    vehicle_total_records = valid.groupby("anonymized_vehicle_id").size()
+    vehicle_unique_zones = valid.groupby("anonymized_vehicle_id")["_repeat_zone_key"].nunique()
+    vehicle_unique_stations = valid.groupby("anonymized_vehicle_id")[
+        "_repeat_station_key"
+    ].nunique()
+    vehicle_unique_days = valid.groupby("anonymized_vehicle_id")["_repeat_local_day"].nunique()
+
+    result["vehicle_total_records"] = (
+        result["anonymized_vehicle_id"].map(vehicle_total_records).fillna(0).astype("int64")
+    )
+    result["vehicle_unique_zones"] = (
+        result["anonymized_vehicle_id"].map(vehicle_unique_zones).fillna(0).astype("int64")
+    )
+    result["vehicle_unique_stations"] = (
+        result["anonymized_vehicle_id"].map(vehicle_unique_stations).fillna(0).astype("int64")
+    )
+    result["vehicle_unique_days"] = (
+        result["anonymized_vehicle_id"].map(vehicle_unique_days).fillna(0).astype("int64")
+    )
+    result["repeat_vehicle_flag"] = result["vehicle_total_records"] > 1
+    result["multi_zone_repeat_flag"] = (
+        result["repeat_vehicle_flag"] & (result["vehicle_unique_zones"] > 1)
+    )
+    result["multi_station_repeat_flag"] = (
+        result["repeat_vehicle_flag"] & (result["vehicle_unique_stations"] > 1)
+    )
+    result["same_vehicle_same_zone_repeat_6h"] = False
+    result["same_vehicle_different_zone_6h"] = False
+
+    sorted_rows = result.sort_values(
+        by=["_repeat_created_time"],
+        na_position="last",
+        kind="mergesort",
+    )
+    time_window = pd.Timedelta(hours=window_hours)
+    for _, group in sorted_rows[sorted_rows["_repeat_vehicle_valid"]].groupby(
+        "anonymized_vehicle_id",
+        sort=False,
+    ):
+        last_seen_by_zone: dict[str, pd.Timestamp] = {}
+        for row_index, row in group.iterrows():
+            current_time = row["_repeat_created_time"]
+            current_zone = str(row["_repeat_zone_key"])
+            if pd.isna(current_time):
+                continue
+
+            same_zone_time = last_seen_by_zone.get(current_zone)
+            if same_zone_time is not None and current_time - same_zone_time <= time_window:
+                result.at[row_index, "same_vehicle_same_zone_repeat_6h"] = True
+
+            different_zone_recent = any(
+                zone != current_zone and current_time - previous_time <= time_window
+                for zone, previous_time in last_seen_by_zone.items()
+            )
+            result.at[row_index, "same_vehicle_different_zone_6h"] = different_zone_recent
+            last_seen_by_zone[current_zone] = current_time
+
+    return result.drop(
+        columns=[
+            "_repeat_vehicle_valid",
+            "_repeat_zone_key",
+            "_repeat_station_key",
+            "_repeat_created_time",
+            "_repeat_local_day",
+        ]
+    )
+
+
+def _repeat_vehicle_zone_entropy(group: pd.DataFrame) -> float:
+    """Compute entropy of repeated vehicle observations across anonymized vehicles."""
+
+    repeated = group[group["repeat_vehicle_flag"] & group["anonymized_vehicle_id"].notna()]
+    if repeated.empty:
+        return 0.0
+    return normalized_zone_entropy(repeated["anonymized_vehicle_id"].value_counts())
+
+
+def build_repeat_vehicle_zone_time_table(
+    frame: pd.DataFrame,
+    *,
+    zone_column: str = "zone_id",
+    datetime_column: str = "created_datetime_ist",
+    window: str = "3h",
+) -> pd.DataFrame:
+    """Aggregate repeat-vehicle persistence features to zone-time rows."""
+
+    enriched = (
+        frame
+        if {
+            "anonymized_vehicle_id",
+            "repeat_vehicle_flag",
+            "same_vehicle_same_zone_repeat_6h",
+            "same_vehicle_different_zone_6h",
+        }.issubset(frame.columns)
+        else add_repeat_vehicle_features(frame, zone_column=zone_column, datetime_column=datetime_column)
+    ).copy()
+
+    if zone_column not in enriched.columns:
+        enriched[zone_column] = "unknown"
+    enriched[zone_column] = enriched[zone_column].map(
+        lambda value: normalize_text_value(value, unknown_for_null=True)
+    )
+    created_time = pd.to_datetime(enriched[datetime_column], errors="coerce")
+    enriched["time_window_start"] = created_time.dt.floor(window)
+
+    grouped = enriched.groupby([zone_column, "time_window_start"], dropna=False)
+    table = grouped.agg(
+        total_records=("anonymized_vehicle_id", "size"),
+        unique_vehicle_count=("anonymized_vehicle_id", "nunique"),
+        repeat_vehicle_count=("repeat_vehicle_flag", "sum"),
+        same_vehicle_same_zone_6h_count=("same_vehicle_same_zone_repeat_6h", "sum"),
+        same_vehicle_different_zone_6h_count=("same_vehicle_different_zone_6h", "sum"),
+    ).reset_index()
+    table["repeat_vehicle_count"] = table["repeat_vehicle_count"].astype("int64")
+    table["same_vehicle_same_zone_6h_count"] = table[
+        "same_vehicle_same_zone_6h_count"
+    ].astype("int64")
+    table["same_vehicle_different_zone_6h_count"] = table[
+        "same_vehicle_different_zone_6h_count"
+    ].astype("int64")
+    table["repeat_vehicle_share"] = table["repeat_vehicle_count"] / table[
+        "total_records"
+    ].clip(lower=1)
+    table["persistence_score"] = table["same_vehicle_same_zone_6h_count"] / table[
+        "unique_vehicle_count"
+    ].clip(lower=1)
+
+    entropy_records = []
+    for keys, group in grouped:
+        zone_value, window_start = keys
+        entropy_records.append(
+            {
+                zone_column: zone_value,
+                "time_window_start": window_start,
+                "repeat_vehicle_zone_entropy": _repeat_vehicle_zone_entropy(group),
+            }
+        )
+    entropy = pd.DataFrame(entropy_records)
+    table = table.merge(
+        entropy,
+        on=[zone_column, "time_window_start"],
+        how="left",
+    )
+    table["repeat_vehicle_zone_entropy"] = table["repeat_vehicle_zone_entropy"].fillna(0.0)
+    return table.sort_values([zone_column, "time_window_start"]).reset_index(drop=True)
+
+
+def write_repeat_vehicle_zone_time_table(
+    frame: pd.DataFrame,
+    output_path: str | Path = REPEAT_VEHICLE_ZONE_TIME_PATH,
+) -> pd.DataFrame:
+    """Build and save repeat-vehicle zone-time features without exposing vehicle IDs."""
+
+    repeat_table = build_repeat_vehicle_zone_time_table(frame)
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    repeat_table.to_parquet(destination, index=False)
+    return repeat_table
+
+
+def _combined_place_text(row: pd.Series) -> str:
+    """Combine location and junction text for place-type extraction."""
+
+    values = [row.get("location"), row.get("junction_name")]
+    parts = [str(value) for value in values if not pd.isna(value)]
+    return re.sub(r"\s+", " ", " ".join(parts).lower()).strip()
+
+
+def _contains_place_term(text: str, term: str) -> bool:
+    """Match place terms on word boundaries where possible."""
+
+    pattern = r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])"
+    return bool(re.search(pattern, text))
+
+
+def infer_place_type_primary(flags: dict[str, bool]) -> str:
+    """Infer the primary place type using the product priority order."""
+
+    for flag_name, label in PLACE_TYPE_PRIORITY:
+        if flags.get(flag_name, False):
+            return label
+    return "unknown"
+
+
+def add_place_type_features(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add text-derived place-type context flags and primary type."""
+
+    result = frame.copy()
+    texts = result.apply(_combined_place_text, axis=1)
+    for flag_name, terms in PLACE_TYPE_FLAGS.items():
+        result[flag_name] = texts.map(
+            lambda text, term_values=terms: any(
+                _contains_place_term(text, term) for term in term_values
+            )
+        )
+    result["place_type_primary"] = result.apply(
+        lambda row: infer_place_type_primary(
+            {flag_name: bool(row[flag_name]) for flag_name in PLACE_TYPE_FLAGS}
+        ),
+        axis=1,
+    )
+    return result
+
+
+def normalize_road_name(value: Any) -> str:
+    """Normalize a road corridor name extracted from location text."""
+
+    if pd.isna(value):
+        return "unknown"
+    text = str(value).split(",", maxsplit=1)[0].lower()
+    text = re.sub(r"^\s*(?:#|no\.?\s*)?\d+[a-z]?(?:[/\-]\d+[a-z]?)?\s+", "", text)
+    text = text.translate(str.maketrans(string.punctuation, " " * len(string.punctuation)))
+    text = re.sub(r"(?<![a-z])rd(?![a-z])", "road", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "unknown"
+
+
+def extract_road_name(location: Any) -> str:
+    """Extract the first comma-delimited location segment as a normalized road name."""
+
+    return normalize_road_name(location)
+
+
+def _vehicle_is_large(row: pd.Series) -> bool:
+    """Return True for large vehicle categories using available vehicle type fields."""
+
+    vehicle_text = " ".join(
+        str(value)
+        for value in (row.get("effective_vehicle_type"), row.get("updated_vehicle_type"), row.get("vehicle_type"))
+        if not pd.isna(value)
+    ).lower()
+    vehicle_text = re.sub(r"\s+", " ", vehicle_text)
+    return any(_contains_place_term(vehicle_text, term) for term in LARGE_VEHICLE_TERMS)
+
+
+def _main_road_parking_signal(row: pd.Series) -> bool:
+    """Return True when the row indicates main-road parking."""
+
+    labels = row.get("parsed_violation_labels")
+    if isinstance(labels, list) and "parking_in_main_road" in labels:
+        return True
+    violation_text = str(row.get("violation_type", "")).lower()
+    location_text = str(row.get("location", "")).lower()
+    return "main road" in violation_text or "parking in a main road" in violation_text or bool(
+        re.search(r"\b(main road|ring road|highway)\b", location_text)
+    )
+
+
+def _rolling_corridor_pfdi(
+    frame: pd.DataFrame,
+    *,
+    corridor_column: str,
+    datetime_column: str,
+    pfdi_column: str,
+) -> pd.Series:
+    """Compute per-row chronological 7-day PFDI sums by corridor."""
+
+    work = frame[[corridor_column, datetime_column, pfdi_column]].copy()
+    work["_original_index"] = frame.index
+    work[datetime_column] = pd.to_datetime(work[datetime_column], errors="coerce", utc=True)
+    work[pfdi_column] = pd.to_numeric(work[pfdi_column], errors="coerce").fillna(0.0)
+    output = pd.Series(0.0, index=frame.index, dtype="float64")
+    for _, group in work.dropna(subset=[datetime_column]).sort_values(datetime_column).groupby(
+        corridor_column,
+        sort=False,
+    ):
+        group = group.sort_values(datetime_column)
+        rolling_values = group.set_index(datetime_column)[pfdi_column].rolling("7D").sum()
+        output.loc[group["_original_index"]] = rolling_values.to_numpy()
+    return output
+
+
+def add_road_corridor_features(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add road-corridor identifiers and aggregate corridor risk features."""
+
+    result = frame.copy()
+    if "location" not in result.columns:
+        result["location"] = pd.NA
+    if "created_datetime_ist" not in result.columns:
+        result["created_datetime_ist"] = pd.NaT
+    if "row_obstruction_score" not in result.columns:
+        result["row_obstruction_score"] = 0.0
+
+    result["road_corridor_id"] = result["location"].map(extract_road_name)
+    result["_corridor_pfdi_value"] = pd.to_numeric(
+        result["row_obstruction_score"],
+        errors="coerce",
+    ).fillna(0.0)
+    result["_corridor_large_vehicle"] = result.apply(_vehicle_is_large, axis=1)
+    result["_corridor_main_road_parking"] = result.apply(_main_road_parking_signal, axis=1)
+    result["_corridor_created_time"] = pd.to_datetime(
+        result["created_datetime_ist"],
+        errors="coerce",
+        utc=True,
+    )
+
+    corridor_stats = result.groupby("road_corridor_id", dropna=False).agg(
+        corridor_record_count=("road_corridor_id", "size"),
+        corridor_pfdi=("_corridor_pfdi_value", "sum"),
+        corridor_large_vehicle_share=("_corridor_large_vehicle", "mean"),
+        corridor_main_road_parking_share=("_corridor_main_road_parking", "mean"),
+    )
+    result["corridor_record_count"] = result["road_corridor_id"].map(
+        corridor_stats["corridor_record_count"]
+    )
+    result["corridor_pfdi"] = result["road_corridor_id"].map(corridor_stats["corridor_pfdi"])
+    result["corridor_large_vehicle_share"] = result["road_corridor_id"].map(
+        corridor_stats["corridor_large_vehicle_share"]
+    )
+    result["corridor_main_road_parking_share"] = result["road_corridor_id"].map(
+        corridor_stats["corridor_main_road_parking_share"]
+    )
+
+    max_time = result["_corridor_created_time"].max()
+    if pd.isna(max_time):
+        recent_stats = pd.Series(dtype="float64")
+    else:
+        recent_cutoff = max_time - pd.Timedelta(days=7)
+        recent_stats = result[result["_corridor_created_time"] >= recent_cutoff].groupby(
+            "road_corridor_id",
+            dropna=False,
+        )["_corridor_pfdi_value"].sum()
+    result["corridor_recent_pfdi"] = (
+        result["road_corridor_id"].map(recent_stats).fillna(0.0).astype(float)
+    )
+    result["corridor_rolling_7d_pfdi"] = _rolling_corridor_pfdi(
+        result,
+        corridor_column="road_corridor_id",
+        datetime_column="created_datetime_ist",
+        pfdi_column="_corridor_pfdi_value",
+    )
+    return result.drop(
+        columns=[
+            "_corridor_pfdi_value",
+            "_corridor_large_vehicle",
+            "_corridor_main_road_parking",
+            "_corridor_created_time",
+        ]
+    )
+
+
+def add_place_type_and_road_corridor_features(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add place-type context and road-corridor risk features to row-level data."""
+
+    return add_road_corridor_features(add_place_type_features(frame))
+
+
+def build_road_corridor_zone_time_features(
+    frame: pd.DataFrame,
+    *,
+    zone_column: str = "zone_id",
+    datetime_column: str = "created_datetime_ist",
+    window: str = "3h",
+) -> pd.DataFrame:
+    """Aggregate place and road-corridor fields for zone-time feature tables."""
+
+    enriched = (
+        frame
+        if {"road_corridor_id", "place_type_primary", "corridor_recent_pfdi"}.issubset(
+            frame.columns
+        )
+        else add_place_type_and_road_corridor_features(frame)
+    ).copy()
+    if zone_column not in enriched.columns:
+        enriched[zone_column] = "unknown"
+    enriched[zone_column] = enriched[zone_column].map(
+        lambda value: normalize_text_value(value, unknown_for_null=True)
+    )
+    created_time = pd.to_datetime(enriched[datetime_column], errors="coerce")
+    enriched["time_window_start"] = created_time.dt.floor(window)
+
+    group_columns = [zone_column, "time_window_start", "road_corridor_id", "place_type_primary"]
+    aggregations: dict[str, tuple[str, str]] = {
+        "corridor_recent_pfdi": ("corridor_recent_pfdi", "max"),
+        "corridor_record_count": ("corridor_record_count", "max"),
+        "corridor_pfdi": ("corridor_pfdi", "max"),
+    }
+    for flag_name in PLACE_TYPE_FLAGS:
+        aggregations[flag_name] = (flag_name, "max")
+    zone_time = enriched.groupby(group_columns, dropna=False).agg(**aggregations).reset_index()
+    for flag_name in PLACE_TYPE_FLAGS:
+        zone_time[flag_name] = zone_time[flag_name].astype(bool)
+    return zone_time.sort_values(group_columns).reset_index(drop=True)
