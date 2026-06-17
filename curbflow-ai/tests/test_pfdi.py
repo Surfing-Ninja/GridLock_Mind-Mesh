@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from curbflow.scoring.location_criticality import compute_location_criticality
@@ -68,7 +69,7 @@ def test_location_criticality_uses_violation_labels_for_flags() -> None:
 
 
 def _pfdi_frame(vehicle_type="CAR", violation_type="WRONG PARKING", validation_status="approved"):
-    return __import__("pandas").DataFrame(
+    return pd.DataFrame(
         {
             "vehicle_number": ["KA01AA0001"],
             "created_datetime_ist": ["2023-11-20T08:00:00+05:30"],
@@ -115,3 +116,114 @@ def test_unknown_validation_is_not_treated_as_rejected() -> None:
     assert unknown.loc[0, "validation_confidence"] == pytest.approx(0.70)
     assert unknown.loc[0, "validation_confidence"] > rejected.loc[0, "validation_confidence"]
     assert unknown.loc[0, "row_obstruction_score"] > rejected.loc[0, "row_obstruction_score"]
+
+
+def test_evidence_quality_multiplier_rewards_high_trust_device() -> None:
+    frame = pd.DataFrame(
+        {
+            "vehicle_number": [
+                "KA01AA1001",
+                "KA01AA1002",
+                "KA01AA1003",
+                "KA01AA2001",
+                "KA01AA2002",
+                "KA01AA2003",
+            ],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-20T08:05:00+05:30",
+                "2023-11-20T08:10:00+05:30",
+                "2023-11-20T08:15:00+05:30",
+                "2023-11-20T08:20:00+05:30",
+                "2023-11-20T08:25:00+05:30",
+            ],
+            "violation_type": ["WRONG PARKING"] * 6,
+            "vehicle_type": ["CAR"] * 6,
+            "updated_vehicle_type": [""] * 6,
+            "junction_name": ["No Junction"] * 6,
+            "location": ["Residential Road"] * 6,
+            "validation_status": [
+                "unknown",
+                "approved",
+                "approved",
+                "unknown",
+                "rejected",
+                "rejected",
+            ],
+            "device_id": [
+                "high_trust_device",
+                "high_trust_device",
+                "high_trust_device",
+                "low_trust_device",
+                "low_trust_device",
+                "low_trust_device",
+            ],
+            "created_by_id": ["same_user"] * 6,
+            "police_station": ["same_station"] * 6,
+            "data_sent_to_scita": [True, True, True, False, False, False],
+        }
+    )
+
+    scored = score_pfdi_rows(frame, compute_evidence_quality=True)
+
+    assert scored.loc[0, "device_trust"] > scored.loc[3, "device_trust"]
+    assert scored.loc[0, "row_obstruction_score"] > scored.loc[3, "row_obstruction_score"]
+
+
+def test_unknown_device_uses_global_evidence_prior() -> None:
+    frame = pd.DataFrame(
+        {
+            "vehicle_number": ["KA01AA3001", "KA01AA3002", "KA01AA3003"],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-20T08:05:00+05:30",
+                "2023-11-20T08:10:00+05:30",
+            ],
+            "violation_type": ["WRONG PARKING"] * 3,
+            "vehicle_type": ["CAR"] * 3,
+            "updated_vehicle_type": [""] * 3,
+            "junction_name": ["No Junction"] * 3,
+            "location": ["Residential Road"] * 3,
+            "validation_status": ["unknown", "approved", "rejected"],
+            "device_id": [pd.NA, "known_device", "known_device"],
+            "created_by_id": ["known_user"] * 3,
+            "police_station": ["known_station"] * 3,
+            "data_sent_to_scita": [pd.NA, True, False],
+        }
+    )
+
+    scored = score_pfdi_rows(frame, compute_evidence_quality=True)
+
+    assert pd.notna(scored.loc[0, "device_trust"])
+    assert pd.notna(scored.loc[0, "evidence_quality_score"])
+    assert scored.loc[0, "pfdi_quality_multiplier"] == pytest.approx(
+        scored.loc[0, "evidence_quality_score"]
+    )
+
+
+def test_rejected_validation_still_downweights_score_with_evidence_quality() -> None:
+    frame = pd.DataFrame(
+        {
+            "vehicle_number": ["KA01AA4001", "KA01AA4002"],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-20T08:05:00+05:30",
+            ],
+            "violation_type": ["WRONG PARKING", "WRONG PARKING"],
+            "vehicle_type": ["CAR", "CAR"],
+            "updated_vehicle_type": ["", ""],
+            "junction_name": ["No Junction", "No Junction"],
+            "location": ["Residential Road", "Residential Road"],
+            "validation_status": ["approved", "rejected"],
+            "device_id": ["same_device", "same_device"],
+            "created_by_id": ["same_user", "same_user"],
+            "police_station": ["same_station", "same_station"],
+            "data_sent_to_scita": [True, True],
+        }
+    )
+
+    scored = score_pfdi_rows(frame, compute_evidence_quality=True)
+
+    assert scored.loc[1, "validation_confidence"] == pytest.approx(0.25)
+    assert scored.loc[1, "evidence_quality_score"] < scored.loc[0, "evidence_quality_score"]
+    assert scored.loc[1, "row_obstruction_score"] < scored.loc[0, "row_obstruction_score"]

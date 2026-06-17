@@ -91,6 +91,33 @@ def test_audit_calculates_operational_windows_and_breakdowns() -> None:
     assert summary["data_sent_to_scita_rate"] == 2 / 3
     assert summary["device_user_counts"]["device_id_unique"] == 2
     assert summary["top_zone_concentration"]["available"] is False
+    assert summary["patrol_myopia"]["available"] is False
+
+
+def test_audit_summary_includes_patrol_myopia_when_zones_exist() -> None:
+    clean = clean_violations(
+        _minimum_raw_frame(
+            latitude=["12.1", "12.2", "12.3", "12.4"],
+            longitude=["77.1", "77.2", "77.3", "77.4"],
+            created_datetime=[
+                "2023-11-20 02:00:00+00",
+                "2023-11-20 03:00:00+00",
+                "2023-11-20 12:00:00+00",
+                "2023-11-20 13:00:00+00",
+            ],
+            police_station=["A", "A", "B", "B"],
+            junction_name=["J1", "No Junction", "J2", "No Junction"],
+            zone_id=["z1", "z1", "z2", "z3"],
+            device_id=["d1", "d1", "d2", "d3"],
+            created_by_id=["u1", "u1", "u2", "u3"],
+        )
+    )
+
+    summary = build_audit_summary(clean)
+
+    assert summary["patrol_myopia"]["available"] is True
+    assert summary["patrol_myopia"]["station_count"] == 2
+    assert summary["patrol_myopia"]["max_patrol_myopia_index"] > 0
 
 
 def test_run_data_audit_writes_expected_artifacts(tmp_path) -> None:

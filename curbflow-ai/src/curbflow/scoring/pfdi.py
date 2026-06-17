@@ -56,7 +56,7 @@ def compute_row_obstruction_score(
     location_criticality: float,
     repeat_pressure: float,
     named_junction: int,
-    validation_confidence_value: float,
+    quality_multiplier: float,
 ) -> float:
     """Compute row-level parking obstruction score."""
 
@@ -67,10 +67,19 @@ def compute_row_obstruction_score(
         + ROW_OBSTRUCTION_WEIGHTS["repeat_pressure"] * repeat_pressure
         + ROW_OBSTRUCTION_WEIGHTS["named_junction_flag"] * named_junction
     )
-    return float(validation_confidence_value * 100 * weighted_sum)
+    return float(quality_multiplier * 100 * weighted_sum)
 
 
-def score_pfdi_rows(frame: pd.DataFrame) -> pd.DataFrame:
+def _quality_multiplier(row: pd.Series) -> float:
+    """Use evidence quality when available, otherwise fall back to validation confidence."""
+
+    evidence_quality = row.get("evidence_quality_score")
+    if pd.notna(evidence_quality):
+        return float(evidence_quality)
+    return float(row["validation_confidence"])
+
+
+def score_pfdi_rows(frame: pd.DataFrame, *, compute_evidence_quality: bool = False) -> pd.DataFrame:
     """Add row-level PFDI input columns and row obstruction scores."""
 
     scored = add_repeat_pressure_features(frame)
@@ -101,6 +110,11 @@ def score_pfdi_rows(frame: pd.DataFrame) -> pd.DataFrame:
         "validation_status",
         pd.Series(["unknown"] * len(scored), index=scored.index),
     ).map(validation_confidence)
+    if compute_evidence_quality:
+        from curbflow.features.novel_features import add_evidence_quality_features
+
+        scored = add_evidence_quality_features(scored)
+    scored["pfdi_quality_multiplier"] = scored.apply(_quality_multiplier, axis=1)
     scored["row_obstruction_score"] = scored.apply(
         lambda row: compute_row_obstruction_score(
             violation_severity=row["violation_severity"],
@@ -108,7 +122,7 @@ def score_pfdi_rows(frame: pd.DataFrame) -> pd.DataFrame:
             location_criticality=row["location_criticality"],
             repeat_pressure=row["repeat_pressure"],
             named_junction=row["named_junction_flag"],
-            validation_confidence_value=row["validation_confidence"],
+            quality_multiplier=row["pfdi_quality_multiplier"],
         ),
         axis=1,
     )
@@ -118,6 +132,8 @@ def score_pfdi_rows(frame: pd.DataFrame) -> pd.DataFrame:
 def run_pfdi_scoring(
     clean_parquet_path: str | Path = CLEAN_PARQUET_PATH,
     output_path: str | Path = ROW_SCORES_PATH,
+    *,
+    compute_evidence_quality: bool = False,
 ) -> pd.DataFrame:
     """Read cleaned violations, score row-level PFDI inputs, and write parquet output."""
 
@@ -125,7 +141,7 @@ def run_pfdi_scoring(
     if not clean_path.exists():
         raise FileNotFoundError(f"Clean violations parquet not found: {clean_path}")
     frame = pd.read_parquet(clean_path)
-    scored = score_pfdi_rows(frame)
+    scored = score_pfdi_rows(frame, compute_evidence_quality=compute_evidence_quality)
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     scored.to_parquet(destination, index=False)

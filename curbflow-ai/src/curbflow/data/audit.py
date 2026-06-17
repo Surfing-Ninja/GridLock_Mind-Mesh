@@ -12,6 +12,7 @@ import pandas as pd
 from curbflow.data.clean import preprocess_violations
 from curbflow.data.schema import AUDIT_ONLY_NULLABLE_COLUMNS, CLEAN_PARQUET_PATH, RAW_CSV_PATH
 from curbflow.data.time_utils import add_created_datetime_parts
+from curbflow.features.novel_features import compute_patrol_myopia_table
 
 
 REPORTS_DIR = Path("artifacts/reports")
@@ -88,6 +89,39 @@ def _scita_rate(frame: pd.DataFrame) -> float | None:
     return float(known.mean())
 
 
+def _patrol_myopia_summary(frame: pd.DataFrame) -> dict[str, Any]:
+    """Summarize patrol myopia when station, zone, and time fields are available."""
+
+    required = {"police_station", "zone_id", "created_datetime_ist"}
+    if not required.issubset(frame.columns):
+        return {
+            "available": False,
+            "note": "Patrol myopia requires zone_id and is populated after zone assignment.",
+        }
+    table = compute_patrol_myopia_table(frame)
+    if table.empty:
+        return {
+            "available": False,
+            "note": "Patrol myopia could not be computed because no station records were available.",
+        }
+    top_station = table.iloc[0]
+    return {
+        "available": True,
+        "station_count": int(len(table)),
+        "mean_patrol_myopia_index": float(table["patrol_myopia_index"].mean()),
+        "max_patrol_myopia_index": float(table["patrol_myopia_index"].max()),
+        "high_myopia_station_count": int((table["patrol_myopia_level"] == "High").sum()),
+        "top_station": {
+            "police_station": str(top_station["police_station"]),
+            "patrol_myopia_index": float(top_station["patrol_myopia_index"]),
+            "patrol_myopia_level": str(top_station["patrol_myopia_level"]),
+            "top_10_zone_share": float(top_station["top_10_zone_share"]),
+            "morning_bias": float(top_station["morning_bias"]),
+            "zone_coverage_entropy": float(top_station["zone_coverage_entropy"]),
+        },
+    }
+
+
 def build_audit_summary(frame: pd.DataFrame) -> dict[str, Any]:
     """Compute data quality, EDA, and enforcement visibility audit metrics."""
 
@@ -144,6 +178,7 @@ def build_audit_summary(frame: pd.DataFrame) -> dict[str, Any]:
             "top_10_zone_share": None,
             "note": "Top-zone concentration requires zoning artifacts and will be populated after zone assignment.",
         },
+        "patrol_myopia": _patrol_myopia_summary(audited),
         "interpretation_warnings": [
             "This dataset is an enforcement visibility dataset, not a complete record of all illegal parking.",
             "No challan should not be interpreted as no illegal parking.",
@@ -231,8 +266,25 @@ def write_bias_audit_report(summary: dict[str, Any], path: Path = BIAS_AUDIT_REP
             "## Top-Zone Concentration",
             "",
             summary["top_zone_concentration"]["note"],
+            "",
+            "## Patrol Myopia",
+            "",
         ]
     )
+    patrol_myopia = summary.get("patrol_myopia", {"available": False})
+    if patrol_myopia.get("available"):
+        top_station = patrol_myopia["top_station"]
+        lines.extend(
+            [
+                f"- Stations scored: {patrol_myopia['station_count']:,}",
+                f"- High-myopia stations: {patrol_myopia['high_myopia_station_count']:,}",
+                f"- Mean Patrol Myopia Index: {patrol_myopia['mean_patrol_myopia_index']:.4f}",
+                f"- Max Patrol Myopia Index: {patrol_myopia['max_patrol_myopia_index']:.4f}",
+                f"- Highest station: {top_station['police_station']} ({top_station['patrol_myopia_level']}, {top_station['patrol_myopia_index']:.4f})",
+            ]
+        )
+    else:
+        lines.append(patrol_myopia.get("note", "Patrol myopia is unavailable."))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
