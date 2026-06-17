@@ -1,8 +1,27 @@
 """Compute row-level Parking-Induced Flow Disruption Index inputs."""
 
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from curbflow.data.schema import CLEAN_PARQUET_PATH
+from curbflow.scoring.pfdi import ROW_SCORES_PATH, run_pfdi_scoring
+
 
 def main() -> None:
-    """Placeholder entrypoint for PFDI scoring."""
+    """Run row-level PFDI scoring."""
+
+    parser = argparse.ArgumentParser(description="Compute row-level CurbFlow PFDI scores.")
+    parser.add_argument("--clean-parquet", default=str(CLEAN_PARQUET_PATH))
+    parser.add_argument("--output", default=str(ROW_SCORES_PATH))
+    args = parser.parse_args()
+
+    scored = run_pfdi_scoring(
+        clean_parquet_path=Path(args.clean_parquet),
+        output_path=Path(args.output),
+    )
+    print(f"Wrote {len(scored):,} scored rows to {args.output}")
 
 
 if __name__ == "__main__":
