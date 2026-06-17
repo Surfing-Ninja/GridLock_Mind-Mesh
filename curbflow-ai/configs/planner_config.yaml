@@ -1,0 +1,50 @@
+# Station-wise exploit/explore enforcement planning configuration.
+modes:
+  conservative:
+    exploit_weight: 0.85
+    explore_weight: 0.15
+  balanced:
+    exploit_weight: 0.70
+    explore_weight: 0.30
+  discovery:
+    exploit_weight: 0.55
+    explore_weight: 0.45
+
+priority_weights:
+  exploit_risk:
+    predicted_pfdi: 0.45
+    hotspot_probability: 0.25
+    recurrence: 0.15
+    location_criticality: 0.10
+    repeat_pressure: 0.05
+  explore_risk:
+    blindspot_risk: 0.45
+    static_potential: 0.25
+    coverage_gap: 0.20
+    operational_peak_priority: 0.10
+
+action_costs:
+  beat_patrol:
+    officers: 1
+    tow_units: 0
+  towing_support:
+    officers: 2
+    tow_units: 1
+  mobile_camera_patrol:
+    officers: 1
+    tow_units: 0
+  repeat_offender_check:
+    officers: 1
+    tow_units: 0
+  temporary_cones:
+    officers: 2
+    tow_units: 0
+  evening_audit_patrol:
+    officers: 2
+    tow_units: 0
+  patrol_expansion:
+    officers: 2
+    tow_units: 0
+  evidence_quality_audit:
+    officers: 1
+    tow_units: 0

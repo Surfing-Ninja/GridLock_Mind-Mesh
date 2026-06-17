@@ -1,0 +1,35 @@
+# Model architecture, training, loss, and ensemble configuration.
+split:
+  strategy: chronological
+  train_fraction: 0.70
+  validation_fraction: 0.15
+  test_fraction: 0.15
+
+be_sthgt:
+  hidden_dim: 128
+  graph_layers: 2
+  temporal_layers: 3
+  attention_heads: 4
+  dropout: 0.15
+  lookback_windows: 56
+  horizon_windows: 1
+  batch_size: 8
+  epochs: 80
+  learning_rate: 0.0007
+
+loss_weights:
+  count: 0.22
+  pfdi: 0.20
+  hotspot: 0.16
+  ranking: 0.16
+  q90: 0.10
+  exposure_consistency: 0.08
+  spatial_smoothness: 0.08
+
+ranker:
+  type: lightgbm_lambdarank
+
+ensemble_weights:
+  be_sthgt: 0.65
+  lightgbm: 0.25
+  rule_blindspot: 0.10
