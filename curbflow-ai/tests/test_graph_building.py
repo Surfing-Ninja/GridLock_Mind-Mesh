@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from curbflow.graph.build_hetero_graph import build_all_graphs
 from curbflow.graph.build_patrol_graph import (
     build_patrol_graph_edges,
     build_patrol_graph_features,
     run_patrol_graph_build,
 )
+from curbflow.graph.graph_features import merge_graph_features
 from curbflow.zoning.assign_zones import assign_grid_zones
 from curbflow.zoning.zone_geojson import zones_to_geojson
 
@@ -142,3 +145,94 @@ def test_patrol_graph_build_writes_aggregate_artifacts(tmp_path) -> None:
     assert len(pd.read_parquet(features_path)) == len(features)
     assert "device_id" not in pd.read_parquet(edges_path).columns
     assert "created_by_id" not in pd.read_parquet(edges_path).columns
+
+
+def _graph_zone_time() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "zone_id": ["zone_a", "zone_a", "zone_b", "zone_b", "zone_c", "zone_c"],
+            "window_start": pd.to_datetime(
+                [
+                    "2023-11-20T06:00:00+05:30",
+                    "2023-11-20T09:00:00+05:30",
+                    "2023-11-20T06:00:00+05:30",
+                    "2023-11-20T09:00:00+05:30",
+                    "2023-11-20T06:00:00+05:30",
+                    "2023-11-20T09:00:00+05:30",
+                ]
+            ),
+            "day_of_week": [0, 0, 0, 0, 0, 0],
+            "hour": [6, 9, 6, 9, 6, 9],
+            "police_station": ["station_1", "station_1", "station_1", "station_1", "station_2", "station_2"],
+            "zone_centroid_lat": [12.9716, 12.9716, 12.9730, 12.9730, 12.9750, 12.9750],
+            "zone_centroid_lon": [77.5946, 77.5946, 77.5960, 77.5960, 77.5980, 77.5980],
+            "record_count": [120, 120, 140, 140, 150, 150],
+            "observed_pfdi": [10.0, 20.0, 12.0, 24.0, 2.0, 3.0],
+            "bias_corrected_pfdi": [11.0, 22.0, 13.0, 26.0, 2.0, 3.0],
+            "place_type_primary": ["commercial", "commercial", "transit", "transit", "unknown", "unknown"],
+            "road_corridor_id": ["mg road", "mg road", "mg road", "mg road", "other road", "other road"],
+        }
+    )
+
+
+def _graph_rows() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "zone_id": ["zone_a", "zone_b", "zone_a", "zone_c", "zone_b", "zone_c"],
+            "created_datetime_ist": [
+                "2023-11-20T08:00:00+05:30",
+                "2023-11-20T09:00:00+05:30",
+                "2023-11-20T10:00:00+05:30",
+                "2023-11-20T11:00:00+05:30",
+                "2023-11-20T12:00:00+05:30",
+                "2023-11-20T13:00:00+05:30",
+            ],
+            "vehicle_number": ["KA01AA0001", "KA01AA0001", "KA01AA0002", "KA01AA0002", "KA01AA0001", "KA01AA0003"],
+            "device_id": ["device_1", "device_1", "device_2", "device_2", "device_1", "device_3"],
+            "created_by_id": ["user_1", "user_1", "user_2", "user_2", "user_1", "user_3"],
+            "zone_centroid_lat": [12.9716, 12.9730, 12.9716, 12.9750, 12.9730, 12.9750],
+            "zone_centroid_lon": [77.5946, 77.5960, 77.5946, 77.5980, 77.5960, 77.5980],
+            "hidden_junction_id": ["junction_a", "junction_a", "junction_a", "junction_b", "junction_a", "junction_b"],
+            "road_corridor_id": ["mg road", "mg road", "mg road", "other road", "mg road", "other road"],
+            "place_type_primary": ["commercial", "transit", "commercial", "unknown", "transit", "unknown"],
+        }
+    )
+
+
+def test_graph_adjacency_matrices_are_square_and_saved(tmp_path) -> None:
+    edges, features, matrices = build_all_graphs(
+        _graph_zone_time(),
+        row_frame=_graph_rows(),
+        active_zone_min_records=100,
+        adjacency_output_dir=tmp_path,
+    )
+
+    assert len(features) == 3
+    for name in ("A_geo", "A_station", "A_pattern", "A_vehicle", "A_patrol"):
+        matrix = np.load(matrices[name])
+        assert matrix.shape == (3, 3)
+
+    assert not edges["weight"].isna().any()
+    assert np.isfinite(edges["weight"].to_numpy(dtype=float)).all()
+
+
+def test_graph_features_merge_into_training_table(tmp_path) -> None:
+    _, graph_features, _ = build_all_graphs(
+        _graph_zone_time(),
+        row_frame=_graph_rows(),
+        active_zone_min_records=100,
+        adjacency_output_dir=tmp_path,
+    )
+    training_like = _graph_zone_time()[["zone_id", "window_start", "bias_corrected_pfdi"]].copy()
+    merged = merge_graph_features(training_like, graph_features)
+
+    expected_columns = {
+        "geo_neighbor_mean_pfdi",
+        "station_neighbor_mean_pfdi",
+        "pattern_neighbor_mean_pfdi",
+        "vehicle_graph_degree",
+        "patrol_pagerank",
+        "community_id",
+    }
+    assert expected_columns.issubset(merged.columns)
+    assert len(merged) == len(training_like)
