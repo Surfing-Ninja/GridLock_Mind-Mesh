@@ -28,6 +28,18 @@ loss_weights:
 
 ranker:
   type: lightgbm_lambdarank
+  objective: lambdarank
+  metric: ndcg
+  ndcg_eval_at: [5, 10, 20]
+  learning_rate: 0.05
+  num_leaves: 63
+  n_estimators: 800
+  feature_fraction: 0.85
+  bagging_fraction: 0.85
+  bagging_freq: 3
+  min_data_in_leaf: 20
+  early_stopping_rounds: 50
+  random_state: 42
 
 ensemble_weights:
   be_sthgt: 0.65

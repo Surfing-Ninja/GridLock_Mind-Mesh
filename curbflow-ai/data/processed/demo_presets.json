@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-06-18T04:50:11.166886+00:00",
+  "source_predictions": "data/processed/predictions.parquet",
+  "source_training_table": "data/processed/model_training_table.parquet",
+  "test_period": {
+    "start_window": "2024-03-17T15:00:00+05:30",
+    "end_window": "2024-04-08T15:00:00+05:30",
+    "method": "final 15 percent of chronological prediction windows"
+  },
+  "presets": [
+    {
+      "id": "morning_known_hotspot",
+      "label": "Morning known hotspot",
+      "button_label": "Load Morning Hotspot Demo",
+      "window_start": "2024-03-20T09:00:00+05:30",
+      "police_station": "rajajinagar",
+      "zone_id": "4826_28040",
+      "mode": "conservative",
+      "officers": 8,
+      "tow_units": 2,
+      "purpose": "Show an observed high-confidence hotspot from a high-record morning/midday test-period window.",
+      "selection_reason": "Selected from the final 15 percent chronological test period by high observed risk among high-record morning/midday rows.",
+      "metrics": {
+        "record_count": 9,
+        "observed_risk_score": 94.42239596451525,
+        "blindspot_risk_score": 9.331397093675891,
+        "predicted_pfdi": 100.0,
+        "hotspot_probability": 1.0,
+        "exposure": 0.35631578947368414,
+        "coverage_gap": 0.6436842105263159,
+        "static_potential": 0.3820256900942606,
+        "deployment_priority": 80.3967137790699
+      }
+    },
+    {
+      "id": "evening_blindspot",
+      "label": "Evening blindspot",
+      "button_label": "Load Evening Blindspot Demo",
+      "window_start": "2024-04-06T18:00:00+05:30",
+      "police_station": "city market",
+      "zone_id": "4810_28050",
+      "mode": "discovery",
+      "officers": 8,
+      "tow_units": 2,
+      "purpose": "Show low enforcement visibility and high blindspot audit priority in an evening test-period window.",
+      "selection_reason": "Selected from the final 15 percent chronological test period by highest blindspot risk in evening windows.",
+      "metrics": {
+        "record_count": 1,
+        "observed_risk_score": 38.506336616186644,
+        "blindspot_risk_score": 38.37605375590796,
+        "predicted_pfdi": 46.437623737409496,
+        "hotspot_probability": 0.46437623737409495,
+        "exposure": 0.13421052631578945,
+        "coverage_gap": 0.8657894736842106,
+        "static_potential": 0.33166619325752744,
+        "deployment_priority": 50.32610560906039
+      }
+    },
+    {
+      "id": "balanced_planner",
+      "label": "Balanced planner",
+      "button_label": "Load Balanced Planner Demo",
+      "window_start": "2024-04-02T09:00:00+05:30",
+      "police_station": "malleshwaram",
+      "zone_id": "4823_28041",
+      "mode": "balanced",
+      "officers": 20,
+      "tow_units": 4,
+      "purpose": "Show 70/30 exploit/explore allocation with 20 officers and 4 tow units.",
+      "selection_reason": "Selected station-window with 17 candidate zones and 17 planner recommendations.",
+      "metrics": {
+        "record_count": 11,
+        "observed_risk_score": 87.04317084797829,
+        "blindspot_risk_score": 4.619527856557067,
+        "predicted_pfdi": 100.0,
+        "hotspot_probability": 1.0,
+        "exposure": 0.6763157894736842,
+        "coverage_gap": 0.3236842105263158,
+        "static_potential": 0.4119888404774939,
+        "deployment_priority": 67.59115319109318
+      }
+    }
+  ]
+}

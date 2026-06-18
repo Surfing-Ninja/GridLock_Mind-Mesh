@@ -1,7 +1,27 @@
+@import "maplibre-gl/dist/maplibre-gl.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
   margin: 0;
+  background: #e2e8f0;
+  color: #020617;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: #1e40af;
+  color: #ffffff;
+}
+
+button,
+a,
+select,
+input {
+  letter-spacing: 0;
 }

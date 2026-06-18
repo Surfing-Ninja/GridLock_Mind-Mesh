@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = PROJECT_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
 
 from curbflow.features.aggregate_zone_time import ZONE_TIME_FEATURES_PATH
 from curbflow.graph.build_hetero_graph import (
@@ -12,7 +18,7 @@ from curbflow.graph.build_hetero_graph import (
     GRAPH_FEATURES_PATH,
     run_graph_build,
 )
-from curbflow.scoring.pfdi import ROW_SCORES_PATH
+from curbflow.zoning.assign_zones import ZONE_ASSIGNMENTS_PATH
 
 
 def main() -> None:
@@ -20,7 +26,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Build CurbFlow graph artifacts.")
     parser.add_argument("--zone-time-input", default=str(ZONE_TIME_FEATURES_PATH))
-    parser.add_argument("--row-input", default=str(ROW_SCORES_PATH))
+    parser.add_argument("--row-input", default=str(ZONE_ASSIGNMENTS_PATH))
     parser.add_argument("--graph-edges-output", default=str(GRAPH_EDGES_PATH))
     parser.add_argument("--graph-features-output", default=str(GRAPH_FEATURES_PATH))
     parser.add_argument("--adjacency-output-dir", default=str(ADJACENCY_OUTPUT_DIR))

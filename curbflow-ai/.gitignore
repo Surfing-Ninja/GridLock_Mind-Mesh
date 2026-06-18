@@ -62,3 +62,5 @@ temp/
 !artifacts/**/.gitkeep
 !**/data/**/.gitkeep
 !**/artifacts/**/.gitkeep
+!data/processed/demo_presets.json
+!artifacts/metrics/model_card.md

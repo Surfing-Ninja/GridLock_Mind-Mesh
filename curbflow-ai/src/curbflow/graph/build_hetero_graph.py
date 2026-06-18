@@ -11,7 +11,7 @@ from curbflow.data.clean import normalize_text_value
 from curbflow.graph.adjacency import active_zone_ids, edges_to_adjacency, save_adjacency_matrices
 from curbflow.graph.build_geo_graph import build_geo_graph_edges
 from curbflow.graph.build_pattern_graph import build_pattern_graph_edges
-from curbflow.graph.build_patrol_graph import build_patrol_graph_edges
+from curbflow.graph.build_patrol_graph import build_patrol_graph_edges, compute_zone_centroids
 from curbflow.graph.build_station_graph import (
     build_station_graph_edges,
     build_zone_station_membership_edges,
@@ -34,6 +34,42 @@ NODE_TYPES = (
     "road_corridor",
     "place_type",
 )
+
+ZONE_COORDINATE_COLUMN_SETS = (
+    {"zone_centroid_lat", "zone_centroid_lon"},
+    {"zone_centroid_latitude", "zone_centroid_longitude"},
+    {"latitude", "longitude"},
+)
+
+
+def _has_zone_coordinates(frame: pd.DataFrame) -> bool:
+    """Return true when a frame can provide zone centroids for graph building."""
+
+    return any(columns.issubset(frame.columns) for columns in ZONE_COORDINATE_COLUMN_SETS)
+
+
+def _attach_zone_centroids(frame: pd.DataFrame, row_frame: pd.DataFrame | None) -> pd.DataFrame:
+    """Attach one centroid per zone from row-level assignments when needed."""
+
+    if _has_zone_coordinates(frame) or row_frame is None or "zone_id" not in row_frame.columns:
+        return frame
+    if not _has_zone_coordinates(row_frame):
+        return frame
+
+    centroids = compute_zone_centroids(row_frame)
+    if centroids.empty:
+        return frame
+
+    result = frame.copy()
+    result["_zone_id_key"] = result["zone_id"].astype(str)
+    centroid_lookup = centroids[["zone_id", "zone_centroid_lat", "zone_centroid_lon"]].copy()
+    centroid_lookup["_zone_id_key"] = centroid_lookup["zone_id"].astype(str)
+    result = result.merge(
+        centroid_lookup[["_zone_id_key", "zone_centroid_lat", "zone_centroid_lon"]],
+        on="_zone_id_key",
+        how="left",
+    )
+    return result.drop(columns=["_zone_id_key"])
 
 
 def _normalise_node(value: Any) -> Any:
@@ -137,6 +173,7 @@ def build_all_graphs(
         if row_frame is not None and "zone_id" in row_frame.columns
         else None
     )
+    active_frame = _attach_zone_centroids(active_frame, active_rows)
 
     vehicle_source = active_rows if active_rows is not None else active_frame
     patrol_source = active_rows if active_rows is not None else active_frame

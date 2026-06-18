@@ -93,6 +93,24 @@ def test_evidence_quality_score_uses_required_formula() -> None:
     assert row["evidence_quality_score"] == pytest.approx(expected)
 
 
+def test_evidence_quality_uses_bayesian_smoothed_rates() -> None:
+    scored = add_evidence_quality_features(_evidence_frame(), alpha=10.0)
+    good = scored[scored["device_id"] == "device_good"].iloc[0]
+
+    expected_approval_rate = (2 + 10 * 0.5) / (2 + 10)
+    expected_reject_rate = (0 + 10 * 0.5) / (2 + 10)
+    expected_trust = (
+        0.45 * expected_approval_rate
+        + 0.25 * (1 - expected_reject_rate)
+        + 0.15 * (1 - 0.0)
+        + 0.15 * 1.0
+    )
+
+    assert good["device_approval_rate"] == pytest.approx(expected_approval_rate)
+    assert good["device_reject_rate"] == pytest.approx(expected_reject_rate)
+    assert good["device_trust"] == pytest.approx(expected_trust)
+
+
 def test_zone_scita_success_rate_is_added_when_zone_exists() -> None:
     scored = add_evidence_quality_features(_evidence_frame())
 
@@ -213,8 +231,15 @@ def test_patrol_myopia_score_rises_for_concentrated_morning_patrols() -> None:
     table = compute_patrol_myopia_table(_patrol_myopia_frame())
     focused = table[table["police_station"] == "focused station"].iloc[0]
     balanced = table[table["police_station"] == "balanced station"].iloc[0]
+    expected_focused = (
+        0.40 * focused["top_10_zone_share"]
+        + 0.30 * focused["morning_bias"]
+        + 0.20 * (1 - focused["zone_coverage_entropy"])
+        + 0.10 * (1 - focused["device_diversity"])
+    )
 
     assert focused["patrol_myopia_index"] > balanced["patrol_myopia_index"]
+    assert focused["patrol_myopia_index"] == pytest.approx(expected_focused)
     assert focused["top_10_zone_share"] == pytest.approx(19 / 20)
     assert focused["morning_bias"] == pytest.approx(1.0)
     assert focused["patrol_myopia_level"] == "High"

@@ -27,7 +27,7 @@ class CurbFlowSequenceDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         return {
-            "X": torch.as_tensor(self.split.X[index], dtype=torch.float32),
+            "X": torch.as_tensor(self.split.X[index].copy(), dtype=torch.float32),
             "y_count": torch.as_tensor(self.split.y_count[index], dtype=torch.float32),
             "y_pfdi": torch.as_tensor(self.split.y_pfdi[index], dtype=torch.float32),
             "y_hotspot": torch.as_tensor(self.split.y_hotspot[index], dtype=torch.float32),

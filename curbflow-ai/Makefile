@@ -1,7 +1,7 @@
-.PHONY: setup audit preprocess pfdi zones features graph train-deep train-ranker predict recommend db api web full test clean
+.PHONY: setup audit preprocess pfdi zones features graph train-deep train-ranker predict recommend db api web full test ci clean
 
 setup:
-	pip install -r requirements.txt -r requirements-ml.txt
+	python -m pip install -r requirements.txt -r requirements-ml.txt
 
 audit:
 	python scripts/run_data_audit.py
@@ -34,19 +34,28 @@ recommend:
 	python scripts/run_recommendations.py
 
 db:
-	python scripts/seed_demo_db.py
+	python scripts/seed_demo_db.py --rebuild
 
 api:
-	uvicorn apps.api.main:app --reload --port 8000
+	python -m uvicorn apps.api.main:app --reload --port 8000
 
 web:
-	cd apps/web && npm run dev
+	cd apps/web && npm run dev -- --port 3000
 
 full:
 	python scripts/run_full_pipeline.py
 
 test:
-	pytest
+	python -m pytest -q
+
+ci:
+	python -m pytest -q
+	python scripts/run_full_pipeline.py --fast-demo --skip-deep
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
+	rm -rf apps/web/.next || true
+	find apps/web/.next -depth -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	rmdir apps/web/.next 2>/dev/null || true
+	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	find . -type f -name ".DS_Store" -delete

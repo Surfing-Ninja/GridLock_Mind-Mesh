@@ -125,23 +125,52 @@ def _chronological_split_counts(total_samples: int, train_fraction: float, val_f
     return train_count, val_count
 
 
-def _fit_transform_features(
+def _fit_transform_feature_panel(
     panel: np.ndarray,
     train_sample_count: int,
     *,
+    lookback_windows: int,
     scaler_path: Path,
 ) -> tuple[np.ndarray, StandardScaler]:
-    """Fit a StandardScaler on train samples only and transform the full panel."""
+    """Fit a StandardScaler on train-period windows only and transform the full panel."""
 
     scaler = StandardScaler()
     if train_sample_count <= 0:
         raise ValueError("At least one train sample is required to fit the scaler.")
-    train_values = panel[:train_sample_count].reshape(-1, panel.shape[-1])
+    train_window_count = min(panel.shape[0], train_sample_count + lookback_windows - 1)
+    train_values = panel[:train_window_count].reshape(-1, panel.shape[-1])
     scaler.fit(train_values)
     scaled = scaler.transform(panel.reshape(-1, panel.shape[-1])).reshape(panel.shape)
     scaler_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(scaler, scaler_path)
     return scaled.astype(np.float32), scaler
+
+
+def _lookback_view(panel: np.ndarray, lookback_windows: int) -> np.ndarray:
+    """Return [sample, lookback, zone, feature] windows without copying the panel."""
+
+    if lookback_windows <= 0:
+        raise ValueError("lookback_windows must be positive.")
+    if panel.shape[0] < lookback_windows:
+        raise ValueError("Not enough windows to build the requested lookback sequence.")
+    windows = np.lib.stride_tricks.sliding_window_view(
+        panel,
+        window_shape=lookback_windows,
+        axis=0,
+    )
+    return np.moveaxis(windows, -1, 1)
+
+
+def _contiguous_slice_or_index(values: np.ndarray, sample_indices: np.ndarray) -> np.ndarray:
+    """Slice contiguous chronological splits without copying large sequence views."""
+
+    if len(sample_indices) == 0:
+        return values[:0]
+    start = int(sample_indices[0])
+    stop = int(sample_indices[-1]) + 1
+    if np.array_equal(sample_indices, np.arange(start, stop, dtype=sample_indices.dtype)):
+        return values[start:stop]
+    return values[sample_indices]
 
 
 def _pivot_tensor(
@@ -161,12 +190,12 @@ def _pivot_tensor(
             frame.set_index(["window_start", "zone_id"])[column]
             .reindex(index)
             .fillna(fill_value)
-            .astype(float)
+            .astype("float32")
             .to_numpy()
             .reshape(len(windows), len(zone_ids))
         )
         arrays.append(values)
-    return np.stack(arrays, axis=-1)
+    return np.stack(arrays, axis=-1).astype(np.float32, copy=False)
 
 
 def _target_panel(frame: pd.DataFrame, column: str, windows: list[pd.Timestamp], zone_ids: list[str]) -> np.ndarray:
@@ -192,15 +221,15 @@ def _build_split(
 
     rank_groups = np.tile(police_station_ids, (len(sample_indices), 1))
     return SequenceSplit(
-        X=X[sample_indices],
-        y_count=targets["next_count"][sample_indices],
-        y_pfdi=targets["next_pfdi"][sample_indices],
-        y_hotspot=targets["next_hotspot"][sample_indices],
-        y_q90_pfdi=targets["next_pfdi"][sample_indices],
-        y_rank_relevance=targets["next_relevance"][sample_indices],
-        exposure_next=targets["exposure_next"][sample_indices],
-        zero_weight_next=targets["zero_weight_next"][sample_indices],
-        window_start=sample_windows[sample_indices],
+        X=_contiguous_slice_or_index(X, sample_indices),
+        y_count=_contiguous_slice_or_index(targets["next_count"], sample_indices),
+        y_pfdi=_contiguous_slice_or_index(targets["next_pfdi"], sample_indices),
+        y_hotspot=_contiguous_slice_or_index(targets["next_hotspot"], sample_indices),
+        y_q90_pfdi=_contiguous_slice_or_index(targets["next_pfdi"], sample_indices),
+        y_rank_relevance=_contiguous_slice_or_index(targets["next_relevance"], sample_indices),
+        exposure_next=_contiguous_slice_or_index(targets["exposure_next"], sample_indices),
+        zero_weight_next=_contiguous_slice_or_index(targets["zero_weight_next"], sample_indices),
+        window_start=_contiguous_slice_or_index(sample_windows, sample_indices),
         zone_ids=zone_ids,
         police_station_ids=police_station_ids,
         rank_groups=rank_groups,
@@ -240,13 +269,6 @@ def build_sequence_splits(
     ).astype(np.float32)
 
     end_indices = np.arange(config.lookback_windows - 1, len(windows), dtype=int)
-    X = np.stack(
-        [
-            feature_panel[end_index - config.lookback_windows + 1 : end_index + 1]
-            for end_index in end_indices
-        ],
-        axis=0,
-    )
     sample_windows = np.array([pd.Timestamp(windows[end_index]) for end_index in end_indices], dtype=object)
     targets = {name: panel[end_indices] for name, panel in target_panels.items()}
 
@@ -255,7 +277,13 @@ def build_sequence_splits(
         config.train_fraction,
         config.val_fraction,
     )
-    X_scaled, scaler = _fit_transform_features(X, train_count, scaler_path=config.scaler_path)
+    feature_panel_scaled, scaler = _fit_transform_feature_panel(
+        feature_panel,
+        train_count,
+        lookback_windows=config.lookback_windows,
+        scaler_path=config.scaler_path,
+    )
+    X = _lookback_view(feature_panel_scaled, config.lookback_windows)
 
     station_by_zone = (
         table.sort_values("window_start")
@@ -275,7 +303,7 @@ def build_sequence_splits(
 
     return SequenceBuildResult(
         train=_build_split(
-            X=X_scaled,
+            X=X,
             targets=targets,
             sample_windows=sample_windows,
             sample_indices=train_indices,
@@ -283,7 +311,7 @@ def build_sequence_splits(
             police_station_ids=police_station_ids,
         ),
         val=_build_split(
-            X=X_scaled,
+            X=X,
             targets=targets,
             sample_windows=sample_windows,
             sample_indices=val_indices,
@@ -291,7 +319,7 @@ def build_sequence_splits(
             police_station_ids=police_station_ids,
         ),
         test=_build_split(
-            X=X_scaled,
+            X=X,
             targets=targets,
             sample_windows=sample_windows,
             sample_indices=test_indices,
