@@ -94,13 +94,13 @@ export function PlannerControls({
               <option value="">Select window</option>
               {windowOptions.map((option) => (
                 <option key={option} value={option}>
-                  {isLimitedHistoricalWindow(option) ? `⚠ ${option}` : option}
+                  {isLimitedHistoricalWindow(option) ? `Limited data · ${option}` : option}
                 </option>
               ))}
             </Select>
             {isLimitedHistoricalWindow(windowStart) ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-950">
-                ⚠ Limited historical data for this window — see{" "}
+                Limited historical data for this window. See{" "}
                 <Link href="/blindspots#evening-blindspot" className="underline underline-offset-2">
                   Blindspot Analysis
                 </Link>

@@ -304,13 +304,31 @@ function RawMetricSources({ metrics }: { metrics: Record<string, unknown> }) {
       <CardHeader>
         <CardTitle>Metric Sources</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-3 lg:grid-cols-2">
+      <CardContent className="grid gap-3 lg:grid-cols-3">
         {sources.map(([source, payload]) => (
-          <div key={source} className="rounded-lg border border-slate-200">
-            <div className="border-b border-slate-100 px-3 py-2 text-sm font-medium text-slate-950">{source}</div>
-            <pre className="max-h-72 overflow-auto bg-slate-950 p-3 text-xs text-slate-50">
-              {JSON.stringify(payload, null, 2)}
-            </pre>
+          <div key={source} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">{source.replaceAll("_", " ")}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {Object.keys(asRecord(payload)).length || "No"} reported fields
+                </div>
+              </div>
+              <Badge variant="secondary">Loaded</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {(["precision_at_10", "ndcg_at_10", "mae_pfdi", "wape_count"] as MetricKey[]).map((key) => {
+                const value = metricValue(payload, key);
+                return (
+                  <div key={key} className="rounded-md bg-slate-50 p-2">
+                    <div className="text-[11px] uppercase text-slate-500">{key.replaceAll("_", " ")}</div>
+                    <div className="mt-1 font-semibold text-slate-950">
+                      {value === undefined ? "—" : formatNumber(value, key === "mae_pfdi" ? 2 : 3)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ))}
       </CardContent>

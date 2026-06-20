@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Legend } from "@/components/legend";
 import type { GeoJsonFeatureCollection } from "@/lib/api";
 import type { PlannerMode } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 const SOURCE_ID = "curbflow-zones";
 const POINT_SOURCE_ID = "curbflow-zone-centroids";
@@ -16,6 +17,7 @@ const GLOW_LAYER_ID = "curbflow-zones-glow";
 const POINT_LAYER_ID = "curbflow-zones-points";
 const LINE_LAYER_ID = "curbflow-zones-line";
 const HOVER_LAYER_ID = "curbflow-zones-hover";
+const SELECTED_LAYER_ID = "curbflow-zones-selected";
 const LABEL_LAYER_ID = "curbflow-zone-labels";
 const TOOLTIP_WIDTH = 280;
 const TOOLTIP_HEIGHT = 370;
@@ -27,6 +29,10 @@ type CurbFlowMapProps = {
   mode?: PlannerMode;
   variant?: "risk" | "blindspot" | "patrol" | "planner" | "coverageGap";
   onZoneClick?: (zoneId: string) => void;
+  selectedZoneId?: string;
+  selectedHour?: number | null;
+  className?: string;
+  label?: string;
 };
 
 type MapTooltip = {
@@ -61,14 +67,18 @@ function toNumberExpression(property: string, fallback = 0): unknown[] {
 
 function riskValueExpression(mode: PlannerMode): unknown[] {
   return [
-    "to-number",
+    "*",
     [
-      "coalesce",
-      ["get", "deployment_priority"],
-      ["get", priorityPropertyForMode(mode)],
-      ["get", "predicted_pfdi"],
-      0,
+      "to-number",
+      [
+        "coalesce",
+        ["get", "deployment_priority"],
+        ["get", priorityPropertyForMode(mode)],
+        ["get", "predicted_pfdi"],
+        0,
+      ],
     ],
+    ["to-number", ["coalesce", ["get", "time_intensity"], 1]],
   ];
 }
 
@@ -95,9 +105,9 @@ function blindspotFillColor(): unknown[] {
   return [
     "case",
     [">=", blindspotRisk, 45],
-    "rgb(162, 28, 175)",
+    "rgb(185, 28, 28)",
     [">=", blindspotRisk, 25],
-    "rgb(147, 51, 234)",
+    "rgb(234, 88, 12)",
     [">=", coverageGap, 0.65],
     "rgb(37, 99, 235)",
     "rgb(148, 163, 184)",
@@ -168,7 +178,7 @@ function fillColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, 
 }
 
 function lineColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>) {
-  if (variant === "blindspot") return "rgb(88, 28, 135)";
+  if (variant === "blindspot") return "rgb(124, 45, 18)";
   if (variant === "coverageGap") return "rgb(124, 45, 18)";
   if (variant === "patrol") return "rgb(30, 64, 175)";
   if (variant === "planner") return "rgb(15, 23, 42)";
@@ -222,10 +232,10 @@ function fillOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>
     ];
   }
   if (variant === "planner") {
-    return ["case", ["==", ["get", "planner_selected"], true], 0.42, 0.015];
+    return ["case", ["==", ["get", "planner_selected"], true], 0.48, 0.015];
   }
   const risk = riskValueExpression(mode);
-  return ["interpolate", ["linear"], risk, 0, 0.01, 25, 0.025, 50, 0.08, 75, 0.16, 100, 0.22];
+  return ["interpolate", ["linear"], risk, 0, 0.012, 25, 0.04, 50, 0.12, 75, 0.24, 100, 0.34];
 }
 
 function glowOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, mode: PlannerMode): unknown[] {
@@ -248,7 +258,7 @@ function glowOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>
     return ["case", ["==", ["get", "planner_selected"], true], 0.28, 0];
   }
   const risk = riskValueExpression(mode);
-  return ["interpolate", ["linear"], risk, 0, 0, 30, 0.03, 55, 0.12, 80, 0.24, 100, 0.34];
+  return ["interpolate", ["linear"], risk, 0, 0, 30, 0.06, 55, 0.18, 80, 0.36, 100, 0.58];
 }
 
 function pointOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, mode: PlannerMode): unknown[] {
@@ -268,21 +278,21 @@ function pointOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]
     return ["interpolate", ["linear"], gap, 0, 0.18, 0.45, 0.58, 0.8, 0.88, 1, 0.95];
   }
   const risk = riskValueExpression(mode);
-  return ["interpolate", ["linear"], risk, 0, 0, 40, 0, 60, 0.4, 80, 0.82, 100, 0.95];
+  return ["interpolate", ["linear"], risk, 0, 0, 35, 0.16, 60, 0.58, 80, 0.9, 100, 1];
 }
 
 function signalRadiusExpression(mode: PlannerMode): unknown[] {
   const risk = riskValueExpression(mode);
-  return ["interpolate", ["linear"], risk, 0, 1.5, 30, 4, 55, 8, 80, 14, 100, 20];
+  return ["interpolate", ["linear"], risk, 0, 2.5, 30, 8, 55, 15, 80, 27, 100, 40];
 }
 
 function lineOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, mode: PlannerMode): unknown[] {
   void mode;
   if (variant === "planner") return ["case", ["==", ["get", "planner_selected"], true], 0.42, 0.02];
-  if (variant === "blindspot") return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.04, 15, 0.16];
-  if (variant === "coverageGap") return ["interpolate", ["linear"], ["zoom"], 9, 0.02, 12, 0.08, 15, 0.2];
-  if (variant === "patrol") return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.035, 15, 0.14];
-  return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.035, 15, 0.14];
+  if (variant === "blindspot") return ["interpolate", ["linear"], ["zoom"], 9, 0.02, 12, 0.1, 15, 0.28];
+  if (variant === "coverageGap") return ["interpolate", ["linear"], ["zoom"], 9, 0.04, 12, 0.12, 15, 0.32];
+  if (variant === "patrol") return ["interpolate", ["linear"], ["zoom"], 9, 0.02, 12, 0.08, 15, 0.22];
+  return ["interpolate", ["linear"], ["zoom"], 9, 0.02, 12, 0.08, 15, 0.24];
 }
 
 function heatWeightForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, mode: PlannerMode): unknown[] {
@@ -326,11 +336,11 @@ function heatColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>):
       0.16,
       "rgba(37, 99, 235, 0.34)",
       0.38,
-      "rgba(147, 51, 234, 0.50)",
+      "rgba(217, 119, 6, 0.50)",
       0.68,
-      "rgba(162, 28, 175, 0.70)",
+      "rgba(234, 88, 12, 0.70)",
       1,
-      "rgba(112, 26, 117, 0.90)",
+      "rgba(185, 28, 28, 0.90)",
     ];
   }
   if (variant === "patrol") {
@@ -402,8 +412,8 @@ function heatColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>):
 }
 
 function heatOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>): unknown[] {
-  if (variant === "planner") return ["interpolate", ["linear"], ["zoom"], 8, 0.62, 12, 0.58, 15, 0.46, 18, 0.32];
-  return ["interpolate", ["linear"], ["zoom"], 8, 0.86, 12, 0.82, 15, 0.68, 17, 0.48, 19, 0.32];
+  if (variant === "planner") return ["interpolate", ["linear"], ["zoom"], 8, 0.66, 12, 0.62, 15, 0.52, 18, 0.42, 20, 0.34];
+  return ["interpolate", ["linear"], ["zoom"], 8, 0.9, 12, 0.86, 15, 0.74, 17, 0.6, 19, 0.5, 20, 0.42];
 }
 
 function boostLabelReadability(map: maplibregl.Map) {
@@ -527,6 +537,18 @@ function geometryCentroid(geometry?: Record<string, unknown> | null): [number, n
   return [total.lng / points.length, total.lat / points.length];
 }
 
+function featureCenterForZone(data: GeoJsonFeatureCollection | undefined, zoneId: string): [number, number] | null {
+  const feature = data?.features.find((item) => {
+    const properties = item.properties ?? {};
+    return String(properties.zone_id ?? properties.id ?? "") === zoneId;
+  });
+  if (!feature) return null;
+  const properties = feature.properties ?? {};
+  const lon = numericProperty(properties, ["zone_centroid_lon", "lon", "longitude"]);
+  const lat = numericProperty(properties, ["zone_centroid_lat", "lat", "latitude"]);
+  return lon !== null && lat !== null ? [lon, lat] : geometryCentroid(feature.geometry);
+}
+
 function centroidFeatureCollection(data?: GeoJsonFeatureCollection): GeoJSON.FeatureCollection {
   const features =
     data?.features.flatMap((feature) => {
@@ -547,6 +569,63 @@ function centroidFeatureCollection(data?: GeoJsonFeatureCollection): GeoJSON.Fea
       ];
     }) ?? [];
   return { type: "FeatureCollection", features };
+}
+
+function circularHourDistance(left: number, right: number) {
+  const direct = Math.abs(left - right);
+  return Math.min(direct, 24 - direct);
+}
+
+function fallbackTimeIntensity(hour: number, variant: NonNullable<CurbFlowMapProps["variant"]>) {
+  if (variant === "blindspot") {
+    if (hour >= 18 && hour <= 20) return 1.24;
+    if (hour >= 15 && hour < 18) return 0.94;
+    if (hour >= 7 && hour < 15) return 0.72;
+    return 0.56;
+  }
+  if (hour >= 7 && hour < 15) return 1.1;
+  if (hour >= 15 && hour < 18) return 0.48;
+  if (hour >= 18 && hour <= 20) return 0.68;
+  return 0.58;
+}
+
+function timeIntensityForFeature(
+  properties: Record<string, unknown>,
+  selectedHour: number | null | undefined,
+  variant: NonNullable<CurbFlowMapProps["variant"]>,
+) {
+  if (selectedHour === null || selectedHour === undefined || !Number.isFinite(selectedHour)) return 1;
+  const hour = Math.max(0, Math.min(23, Math.round(selectedHour)));
+  const peakHour = asNumber(properties.peak_hour);
+  if (peakHour !== null) {
+    const distance = circularHourDistance(hour, peakHour);
+    const peakBoost = Math.exp(-(distance * distance) / 18);
+    const base = fallbackTimeIntensity(hour, variant);
+    return clamp(base * (0.58 + peakBoost * 0.72), 0.2, 1.42);
+  }
+  return fallbackTimeIntensity(hour, variant);
+}
+
+function temporalFeatureCollection(
+  data: GeoJsonFeatureCollection | undefined,
+  selectedHour: number | null | undefined,
+  variant: NonNullable<CurbFlowMapProps["variant"]>,
+): GeoJsonFeatureCollection {
+  if (!data) return emptyFeatureCollection();
+  return {
+    type: "FeatureCollection",
+    features: data.features.map((feature) => {
+      const properties = feature.properties ?? {};
+      return {
+        ...feature,
+        properties: {
+          ...properties,
+          time_intensity: timeIntensityForFeature(properties, selectedHour, variant),
+          timeline_hour: selectedHour ?? null,
+        },
+      };
+    }),
+  };
 }
 
 function asNumber(value: unknown): number | null {
@@ -712,11 +791,21 @@ function tooltipFromFeature(feature: maplibregl.MapGeoJSONFeature, point: maplib
   };
 }
 
-export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZoneClick }: CurbFlowMapProps) {
+export function CurbFlowMap({
+  zones,
+  mode = "balanced",
+  variant = "risk",
+  onZoneClick,
+  selectedZoneId,
+  selectedHour,
+  className,
+  label,
+}: CurbFlowMapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const onZoneClickRef = useRef(onZoneClick);
   const hoveredZoneIdRef = useRef<string | number | null>(null);
+  const selectedZoneIdRef = useRef<string | null>(null);
   const hasFitBoundsRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [tooltip, setTooltip] = useState<MapTooltip | null>(null);
@@ -772,9 +861,9 @@ export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZone
             maxzoom: 20,
             paint: {
               "heatmap-color": heatColorForVariant(variant) as never,
-              "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.86, 11, 1.16, 14, 1.62, 17, 2.05] as never,
+              "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.96, 11, 1.24, 14, 1.78, 17, 2.32, 20, 2.58] as never,
               "heatmap-opacity": heatOpacityForVariant(variant) as never,
-              "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 10, 11, 24, 13, 44, 15, 70, 17, 98] as never,
+              "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 12, 11, 28, 13, 52, 15, 82, 17, 118, 20, 160] as never,
               "heatmap-weight": heatWeightForVariant(variant, mode) as never,
             },
           },
@@ -864,6 +953,22 @@ export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZone
               "line-color": "rgba(255, 255, 255, 0.96)",
               "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.98, 0] as never,
               "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1, 12, 2.3, 15, 3.4] as never,
+            },
+          },
+          beforeLabels,
+        );
+      }
+      if (!map.getLayer(SELECTED_LAYER_ID)) {
+        map.addLayer(
+          {
+            id: SELECTED_LAYER_ID,
+            type: "line",
+            source: SOURCE_ID,
+            paint: {
+              "line-color": "rgb(2, 6, 23)",
+              "line-opacity": ["case", ["boolean", ["feature-state", "selected"], false], 1, 0] as never,
+              "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2, 12, 4, 15, 6] as never,
+              "line-blur": 0.2,
             },
           },
           beforeLabels,
@@ -965,23 +1070,47 @@ export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZone
     const pointSource = map.getSource(POINT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const labelSource = map.getSource(LABEL_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (!source || !pointSource || !labelSource) return;
-    const data = zones ?? emptyFeatureCollection();
+    const data = temporalFeatureCollection(zones, selectedHour, variant);
     source.setData(data as unknown as GeoJSON.FeatureCollection);
-    pointSource.setData(centroidFeatureCollection(zones));
-    labelSource.setData(stationLabelFeatureCollection(zones, variant, mode));
+    pointSource.setData(centroidFeatureCollection(data));
+    labelSource.setData(stationLabelFeatureCollection(data, variant, mode));
 
-    const bounds = collectBounds(zones);
+    const bounds = collectBounds(data);
     if (bounds && !hasFitBoundsRef.current) {
       map.fitBounds(bounds, { padding: 32, maxZoom: 13.5, duration: 700 });
       hasFitBoundsRef.current = true;
     }
-  }, [mapReady, mode, variant, zones]);
+  }, [mapReady, mode, selectedHour, variant, zones]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    if (selectedZoneIdRef.current) {
+      map.setFeatureState({ source: SOURCE_ID, id: selectedZoneIdRef.current }, { selected: false });
+    }
+    selectedZoneIdRef.current = selectedZoneId ?? null;
+    if (selectedZoneIdRef.current) {
+      map.setFeatureState({ source: SOURCE_ID, id: selectedZoneIdRef.current }, { selected: true });
+      const center = featureCenterForZone(zones, selectedZoneIdRef.current);
+      if (center) {
+        const currentZoom = map.getZoom();
+        map.easeTo({
+          center,
+          zoom: Math.max(currentZoom, 15.2),
+          pitch: 0,
+          bearing: map.getBearing(),
+          duration: 850,
+          essential: true,
+        });
+      }
+    }
+  }, [mapReady, selectedZoneId, zones]);
 
   return (
-    <div className="relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm sm:h-[440px]">
+    <div className={cn("relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm sm:h-[440px]", className)}>
       <div ref={mapRef} className="absolute inset-0" />
       <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur">
-        {featureCount > 0 ? `Live zone layer · ${featureCount.toLocaleString()} zones` : "Loading live zones..."}
+        {featureCount > 0 ? `${label ?? "Live zone layer"} · ${featureCount.toLocaleString()} zones` : "Loading live zones..."}
       </div>
       {tooltip ? (
         <div
@@ -1006,9 +1135,9 @@ export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZone
               <div className="text-slate-400">Coverage gap</div>
               <div className="font-semibold text-slate-900">{formatTooltipPercent(tooltip.coverageGap)}</div>
             </div>
-            <div className="rounded-md bg-purple-50 p-2">
-              <div className="text-purple-500">Blindspot</div>
-              <div className="font-semibold text-purple-950">{formatTooltipNumber(tooltip.blindspotRisk, 1)}</div>
+            <div className="rounded-md bg-blue-50 p-2">
+              <div className="text-blue-700">Blindspot</div>
+              <div className="font-semibold text-blue-950">{formatTooltipNumber(tooltip.blindspotRisk, 1)}</div>
             </div>
             <div className="rounded-md bg-orange-50 p-2">
               <div className="text-orange-500">Records</div>

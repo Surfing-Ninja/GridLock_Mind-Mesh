@@ -30,14 +30,14 @@ const items = [
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="hidden min-h-screen w-64 border-r border-slate-800 bg-slate-950 px-3 py-4 text-white lg:block">
+    <aside className="hidden min-h-screen w-64 border-r border-slate-200 bg-[#fbfbf9] px-3 py-4 text-slate-950 lg:block">
       <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-slate-950">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-950 text-white">
           <Gauge className="h-5 w-5" />
         </div>
         <div>
           <div className="text-sm font-semibold">CurbFlow AI</div>
-          <div className="text-xs text-slate-400">Enforcement intelligence</div>
+          <div className="text-xs text-slate-500">Enforcement intelligence</div>
         </div>
       </div>
       <nav className="space-y-1">
@@ -51,8 +51,8 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white",
-                active && "bg-white text-slate-950 hover:bg-white hover:text-slate-950",
+                "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                active && "bg-slate-950 text-white shadow-sm hover:bg-slate-950 hover:text-white",
               )}
             >
               <Icon className="h-4 w-4" />

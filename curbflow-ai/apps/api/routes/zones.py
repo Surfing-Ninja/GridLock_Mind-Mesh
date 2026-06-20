@@ -17,7 +17,7 @@ from apps.api.dependencies import (
     validate_station,
     validate_window_start,
 )
-from apps.api.schemas import PlannerMode, ZoneDetailsResponse
+from apps.api.schemas import PlannerMode, PredictionWindowRow, ZoneDetailsResponse
 from curbflow.db.repository import CurbFlowRepository
 
 
@@ -101,6 +101,26 @@ def zones_geojson(
         mode=mode,
     )
     return sanitize_private_fields(geojson)
+
+
+@router.get(
+    "/windows",
+    response_model=list[PredictionWindowRow],
+    summary="List replayable prediction windows",
+    description=(
+        "Return recent 3-hour prediction windows for the map timeline. Each row is an aggregate "
+        "window summary and contains no vehicle, device, or user identifiers."
+    ),
+)
+def prediction_windows(
+    station: str | None = Depends(validate_station),
+    limit: int = Query(default=96, ge=1, le=500),
+    repository: CurbFlowRepository = Depends(get_repository),
+) -> list[PredictionWindowRow]:
+    """Return recent prediction windows for map replay controls."""
+
+    rows = repository.get_prediction_windows(station=station, limit=limit)
+    return [PredictionWindowRow(**row) for row in sanitize_private_fields(rows)]
 
 
 @router.get(

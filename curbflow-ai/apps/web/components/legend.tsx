@@ -19,8 +19,8 @@ export function Legend({ variant = "risk" }: LegendProps) {
     blindspot: [
       { label: "Low audit risk", className: "bg-slate-400" },
       { label: "Coverage gap", className: "bg-blue-600" },
-      { label: "High blindspot", className: "bg-purple-600" },
-      { label: "Critical audit", className: "bg-fuchsia-700" },
+      { label: "High blindspot", className: "bg-orange-600" },
+      { label: "Critical audit", className: "bg-red-700" },
     ],
     coverageGap: [
       { label: "Low gap", className: "bg-blue-600" },

@@ -90,6 +90,19 @@ class RiskRow(BaseModel):
     explanation_json: str | None = None
 
 
+class PredictionWindowRow(BaseModel):
+    """Timeline window available for map replay."""
+
+    window_start: str
+    zone_count: int | None = None
+    sample_station: str | None = None
+    avg_predicted_pfdi: float | None = None
+    max_predicted_pfdi: float | None = None
+    avg_coverage_gap: float | None = None
+    max_blindspot_risk: float | None = None
+    max_balanced_priority: float | None = None
+
+
 class MorningBriefRow(BaseModel):
     """Historical morning deployment brief row."""
 

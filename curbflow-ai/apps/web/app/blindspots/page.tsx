@@ -167,7 +167,14 @@ export default function BlindspotsPage() {
       <EvidenceGapSection />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
-        <CurbFlowMap zones={zones.data} mode="discovery" variant="blindspot" onZoneClick={setSelectedZoneId} />
+        <CurbFlowMap
+          zones={zones.data}
+          mode="discovery"
+          variant="blindspot"
+          selectedZoneId={selectedZoneId}
+          onZoneClick={setSelectedZoneId}
+          className="sm:h-[620px]"
+        />
         <BlindSpotTable rows={blindspots.data?.slice(0, 10)} onSelect={setSelectedZoneId} />
       </section>
       <BlindSpotTable rows={blindspots.data} onSelect={setSelectedZoneId} />

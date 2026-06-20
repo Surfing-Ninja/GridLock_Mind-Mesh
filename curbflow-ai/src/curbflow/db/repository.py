@@ -106,6 +106,31 @@ class CurbFlowRepository:
 
         return _records(self._fetch_df(queries.HOURLY_AUDIT))
 
+    def get_prediction_windows(self, station: str | None = None, limit: int = 96) -> list[dict[str, Any]]:
+        """Return recent prediction windows for timeline-driven map replay."""
+
+        return _records(
+            self._fetch_df(
+                """
+                SELECT
+                    window_start,
+                    count(DISTINCT zone_id) AS zone_count,
+                    any_value(police_station) FILTER (WHERE police_station IS NOT NULL) AS sample_station,
+                    avg(predicted_pfdi) AS avg_predicted_pfdi,
+                    max(predicted_pfdi) AS max_predicted_pfdi,
+                    avg(coverage_gap) AS avg_coverage_gap,
+                    max(blindspot_risk_score) AS max_blindspot_risk,
+                    max(deployment_priority_balanced) AS max_balanced_priority
+                FROM predictions
+                WHERE (? IS NULL OR police_station = ?)
+                GROUP BY window_start
+                ORDER BY window_start DESC
+                LIMIT ?
+                """,
+                [station, station, max(1, int(limit))],
+            )
+        )
+
     def get_zones_geojson(
         self,
         layer: str = "zones",

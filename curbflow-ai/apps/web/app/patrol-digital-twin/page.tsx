@@ -7,9 +7,9 @@ import { CurbFlowMap } from "@/components/curbflow-map";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PatrolRouteRow, PatrolStationSummary } from "@/lib/api";
 import { getPatrolRoutes, getPatrolSummary, getZonesGeoJson } from "@/lib/api";
+import { useCurbFlowStore } from "@/lib/store";
 import { formatNumber } from "@/lib/utils";
 
 function asNumber(value: unknown): number | undefined {
@@ -87,56 +87,64 @@ function StationMyopiaCard({ row }: { row: PatrolStationSummary }) {
   );
 }
 
-function RouteTable({ title, rows }: { title: string; rows: PatrolRouteRow[] }) {
+function RouteTable({
+  title,
+  rows,
+  onSelect,
+}: {
+  title: string;
+  rows: PatrolRouteRow[];
+  onSelect?: (zoneId: string) => void;
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Route</TableHead>
-                <TableHead>Station</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Transitions</TableHead>
-                <TableHead>Weight</TableHead>
-                <TableHead>Gap</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row, index) => (
-                <TableRow key={`${row.from_zone_id}-${row.to_zone_id}-${index}`}>
-                  <TableCell className="font-medium text-slate-950">
-                    <span className="inline-flex items-center gap-1">
-                      {row.from_zone_id ?? "-"}
-                      <ArrowRight className="h-3 w-3 text-slate-400" />
-                      {row.to_zone_id ?? "-"}
-                    </span>
-                  </TableCell>
-                  <TableCell>{row.police_station ?? "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant={categoryVariant(row.route_category)}>{categoryLabel(row.route_category)}</Badge>
-                  </TableCell>
-                  <TableCell>{formatNumber(Number(row.patrol_transition_count ?? 0))}</TableCell>
-                  <TableCell>{score(row.patrol_edge_weight)}</TableCell>
-                  <TableCell>
-                    {asNumber(row.mean_gap_hours) === undefined ? "-" : `${formatNumber(Number(row.mean_gap_hours), 1)}h`}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!rows.length ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-slate-500">
-                    No aggregate patrol routes are available for this category yet.
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </div>
+      <CardContent className="grid gap-3 lg:grid-cols-2">
+        {rows.map((row, index) => {
+          const focusZoneValue =
+            row.route_category === "nearby_uncovered_zone" ? row.to_zone_id : row.from_zone_id ?? row.to_zone_id;
+          const focusZone = String(focusZoneValue ?? "");
+          return (
+            <button
+              key={`${row.from_zone_id}-${row.to_zone_id}-${index}`}
+              type="button"
+              onClick={() => {
+                if (focusZone) onSelect?.(focusZone);
+              }}
+              className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <Badge variant={categoryVariant(row.route_category)}>{categoryLabel(row.route_category)}</Badge>
+                <span className="text-xs text-slate-500">
+                  {asNumber(row.mean_gap_hours) === undefined ? "Gap unknown" : `${formatNumber(Number(row.mean_gap_hours), 1)}h gap`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 font-mono text-sm font-semibold text-slate-950">
+                <span>{row.from_zone_id ?? "-"}</span>
+                <ArrowRight className="h-4 w-4 text-slate-400" />
+                <span>{row.to_zone_id ?? "-"}</span>
+              </div>
+              <div className="mt-2 text-sm text-slate-600">{row.police_station ?? "Unknown station"}</div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-blue-50 p-2">
+                  <div className="text-[11px] uppercase text-blue-700">Transitions</div>
+                  <div className="font-semibold text-blue-950">{formatNumber(Number(row.patrol_transition_count ?? 0))}</div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <div className="text-[11px] uppercase text-slate-500">Route weight</div>
+                  <div className="font-semibold text-slate-950">{score(row.patrol_edge_weight)}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {!rows.length ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 lg:col-span-2">
+            No aggregate patrol routes are available for this category yet.
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -207,6 +215,8 @@ function RecommendationPanel({
 }
 
 export default function PatrolDigitalTwinPage() {
+  const selectedZoneId = useCurbFlowStore((state) => state.selectedZoneId);
+  const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const zones = useQuery({
     queryKey: ["zones", "patrol-digital-twin"],
     queryFn: () => getZonesGeoJson({ mode: "balanced" }),
@@ -256,7 +266,13 @@ export default function PatrolDigitalTwinPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <CurbFlowMap zones={zones.data} mode="balanced" variant="patrol" />
+        <CurbFlowMap
+          zones={zones.data}
+          mode="balanced"
+          variant="patrol"
+          selectedZoneId={selectedZoneId}
+          onZoneClick={setSelectedZoneId}
+        />
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -315,9 +331,9 @@ export default function PatrolDigitalTwinPage() {
       <RecommendationPanel summaryRows={summaryRows} routes={routeRows} />
 
       <section className="grid gap-4">
-        <RouteTable title="Zones Frequently Connected By Patrol Transitions" rows={frequentRoutes} />
-        <RouteTable title="High-Coverage Patrol Loops" rows={patrolLoops} />
-        <RouteTable title="Nearby Uncovered Zones" rows={uncoveredRoutes} />
+        <RouteTable title="Zones Frequently Connected By Patrol Transitions" rows={frequentRoutes} onSelect={setSelectedZoneId} />
+        <RouteTable title="High-Coverage Patrol Loops" rows={patrolLoops} onSelect={setSelectedZoneId} />
+        <RouteTable title="Nearby Uncovered Zones" rows={uncoveredRoutes} onSelect={setSelectedZoneId} />
       </section>
     </div>
   );

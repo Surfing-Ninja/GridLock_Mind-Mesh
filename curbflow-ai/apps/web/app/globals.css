@@ -6,7 +6,7 @@
 
 body {
   margin: 0;
-  background: #e2e8f0;
+  background: #fbfbf9;
   color: #020617;
 }
 
@@ -24,4 +24,83 @@ a,
 select,
 input {
   letter-spacing: 0;
+}
+
+@keyframes curbflow-alert-sweep {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.7;
+  }
+  65% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateX(140%);
+    opacity: 0;
+  }
+}
+
+@keyframes curbflow-live-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes curbflow-tour-border {
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.01);
+  }
+}
+
+@keyframes curbflow-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.curbflow-alert-sweep::after {
+  animation: curbflow-alert-sweep 2.8s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.48), transparent);
+  content: "";
+  inset: 0;
+  position: absolute;
+  width: 45%;
+}
+
+.curbflow-live-dot::after {
+  animation: curbflow-live-pulse 1.6s ease-out infinite;
+  background: currentColor;
+  border-radius: 999px;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.curbflow-tour-spotlight {
+  animation: curbflow-tour-border 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.58), 0 20px 60px rgba(2, 6, 23, 0.28);
+}
+
+.curbflow-tour-card {
+  animation: curbflow-card-rise 180ms ease-out;
 }

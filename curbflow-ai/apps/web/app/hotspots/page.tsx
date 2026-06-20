@@ -50,7 +50,13 @@ export default function HotspotsPage() {
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
         <div className="space-y-2">
-          <CurbFlowMap zones={zones.data} mode={mode} onZoneClick={setSelectedZoneId} />
+          <CurbFlowMap
+            zones={zones.data}
+            mode={mode}
+            selectedZoneId={selectedZoneId}
+            onZoneClick={setSelectedZoneId}
+            className="sm:h-[620px]"
+          />
           <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600 shadow-sm">
             Predictions are based on historical challan patterns (Nov 2023–Apr 2024). Each record represents a
             challan issued by an officer, not a camera detection. Evening hours (3–8PM IST) are structurally

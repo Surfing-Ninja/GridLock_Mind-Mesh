@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const titles: Record<string, string> = {
-  "/": "Dashboard",
+  "/": "Command Center",
   "/audit": "Bias Audit",
   "/hotspots": "Observed Hotspots",
   "/blindspots": "Blindspots",
@@ -33,7 +33,7 @@ const mobileLinks = [
 export function Header() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-4">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-[#fbfbf9]/95 px-3 py-3 shadow-sm backdrop-blur sm:px-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

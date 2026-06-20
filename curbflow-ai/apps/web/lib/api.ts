@@ -57,6 +57,17 @@ export type RiskRow = {
   [key: string]: unknown;
 };
 
+export type PredictionWindowRow = {
+  window_start: string;
+  zone_count?: number | null;
+  sample_station?: string | null;
+  avg_predicted_pfdi?: number | null;
+  max_predicted_pfdi?: number | null;
+  avg_coverage_gap?: number | null;
+  max_blindspot_risk?: number | null;
+  max_balanced_priority?: number | null;
+};
+
 export type PatrolStationSummary = {
   police_station?: string | null;
   total_records?: number | null;
@@ -245,6 +256,10 @@ export function getZonesGeoJson(params: {
   mode?: PlannerMode;
 } = {}) {
   return request<GeoJsonFeatureCollection>(`/zones/geojson${qs(params)}`);
+}
+
+export function getPredictionWindows(params: { station?: string; limit?: number } = {}) {
+  return request<PredictionWindowRow[]>(`/zones/windows${qs(params)}`);
 }
 
 export function getHotspots(params: {

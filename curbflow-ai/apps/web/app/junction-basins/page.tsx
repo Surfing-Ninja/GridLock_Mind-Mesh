@@ -6,8 +6,11 @@ import { BlindSpotTable } from "@/components/blindspot-table";
 import { CurbFlowMap } from "@/components/curbflow-map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBlindspots, getZonesGeoJson } from "@/lib/api";
+import { useCurbFlowStore } from "@/lib/store";
 
 export default function JunctionBasinsPage() {
+  const selectedZoneId = useCurbFlowStore((state) => state.selectedZoneId);
+  const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const zones = useQuery({ queryKey: ["zones", "junction-basins"], queryFn: () => getZonesGeoJson({ mode: "discovery" }) });
   const spillovers = useQuery({ queryKey: ["junction-basin-blindspots"], queryFn: () => getBlindspots({ top_k: 25 }) });
 
@@ -22,8 +25,19 @@ export default function JunctionBasinsPage() {
           junction basins to detect spillover around traffic-critical points.
         </CardContent>
       </Card>
-      <CurbFlowMap zones={zones.data} mode="discovery" />
-      <BlindSpotTable rows={spillovers.data} />
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
+        <CurbFlowMap
+          zones={zones.data}
+          mode="discovery"
+          variant="blindspot"
+          selectedZoneId={selectedZoneId}
+          onZoneClick={setSelectedZoneId}
+          className="sm:h-[620px]"
+          label="Junction spillover layer"
+        />
+        <BlindSpotTable rows={spillovers.data?.slice(0, 10)} onSelect={setSelectedZoneId} />
+      </section>
+      <BlindSpotTable rows={spillovers.data} onSelect={setSelectedZoneId} />
     </div>
   );
 }

@@ -220,7 +220,7 @@ function ExplanationPanel({
   );
 }
 
-function SelectedActionsPanel({ rows }: { rows: PlannerRecommendation[] }) {
+function SelectedActionsPanel({ rows, onSelect }: { rows: PlannerRecommendation[]; onSelect?: (zoneId: string) => void }) {
   const actions = rows.slice(0, 8);
   return (
     <Card>
@@ -232,7 +232,12 @@ function SelectedActionsPanel({ rows }: { rows: PlannerRecommendation[] }) {
       </CardHeader>
       <CardContent className="space-y-2">
         {actions.map((row, index) => (
-          <div key={`${row.zone_id}-${row.action}-${index}`} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
+          <button
+            key={`${row.zone_id}-${row.action}-${index}`}
+            type="button"
+            onClick={() => onSelect?.(row.zone_id)}
+            className="flex w-full items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
             <div>
               <div className="font-medium text-slate-950">{row.zone_id}</div>
               <div className="text-xs text-slate-500">{actionLabel(row.action)}</div>
@@ -240,7 +245,7 @@ function SelectedActionsPanel({ rows }: { rows: PlannerRecommendation[] }) {
             <Badge variant={row.action_category === "blindspot" ? "warning" : "secondary"}>
               #{row.recommendation_rank ?? index + 1}
             </Badge>
-          </div>
+          </button>
         ))}
         {!actions.length ? (
           <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
@@ -263,6 +268,7 @@ export default function PlannerPage() {
   const [briefRequest, setBriefRequest] = useState<{ station: string; dow: string; slot: number } | null>(null);
   const mode = useCurbFlowStore((state) => state.plannerMode);
   const setMode = useCurbFlowStore((state) => state.setPlannerMode);
+  const selectedZoneId = useCurbFlowStore((state) => state.selectedZoneId);
   const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const [rows, setRows] = useState<PlannerRecommendation[]>([]);
 
@@ -487,8 +493,14 @@ export default function PlannerPage() {
       <ResourceSummary rows={rows} />
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <CurbFlowMap zones={plannerZones} mode={mode} variant="planner" />
-        <SelectedActionsPanel rows={rows} />
+        <CurbFlowMap
+          zones={plannerZones}
+          mode={mode}
+          variant="planner"
+          selectedZoneId={selectedZoneId}
+          onZoneClick={setSelectedZoneId}
+        />
+        <SelectedActionsPanel rows={rows} onSelect={setSelectedZoneId} />
       </section>
 
       <ExplanationPanel mode={mode} onModeChange={changeMode} loading={planner.isPending} />

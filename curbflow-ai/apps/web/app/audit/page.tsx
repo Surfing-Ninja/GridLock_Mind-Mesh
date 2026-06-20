@@ -41,6 +41,12 @@ function topZoneSummary(summary?: AuditSummary) {
   return "—";
 }
 
+function concentrationMetric(summary: AuditSummary | undefined, key: string, percentValue = false) {
+  const value = asNumber((summary?.top_zone_concentration ?? {})[key]);
+  if (value === undefined) return "—";
+  return percentValue ? `${formatNumber(value * 100, 1)}%` : formatNumber(value, 0);
+}
+
 function nullOutcomeLabel(summary?: AuditSummary) {
   const columns = Object.entries(summary?.null_outcome_columns ?? {})
     .filter(([, isNull]) => isNull)
@@ -191,10 +197,37 @@ export default function AuditPage() {
                 Top-Zone Concentration
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <pre className="max-h-48 overflow-auto rounded-md bg-slate-50 p-3 text-xs text-slate-700">
-                {JSON.stringify(summary.data?.top_zone_concentration ?? {}, null, 2)}
-              </pre>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Active zones</div>
+                  <div className="mt-1 font-semibold text-slate-950">
+                    {concentrationMetric(summary.data, "active_zones")}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Top 10 share</div>
+                  <div className="mt-1 font-semibold text-slate-950">
+                    {concentrationMetric(summary.data, "top_10_zone_share", true)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Top 1% share</div>
+                  <div className="mt-1 font-semibold text-slate-950">
+                    {concentrationMetric(summary.data, "top_1_percent_zone_share", true)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Records covered</div>
+                  <div className="mt-1 font-semibold text-slate-950">
+                    {concentrationMetric(summary.data, "records_covered_by_active_zones")}
+                  </div>
+                </div>
+              </div>
+              <p className="rounded-lg bg-blue-50 p-3 text-sm leading-6 text-blue-950">
+                This panel explains whether enforcement is concentrated in a small number of repeated zones, a key signal
+                behind patrol myopia.
+              </p>
             </CardContent>
           </Card>
         </div>
