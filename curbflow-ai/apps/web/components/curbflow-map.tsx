@@ -18,14 +18,14 @@ const LINE_LAYER_ID = "curbflow-zones-line";
 const HOVER_LAYER_ID = "curbflow-zones-hover";
 const LABEL_LAYER_ID = "curbflow-zone-labels";
 const TOOLTIP_WIDTH = 280;
-const TOOLTIP_HEIGHT = 300;
+const TOOLTIP_HEIGHT = 370;
 const TOOLTIP_OFFSET = 16;
 const TOOLTIP_EDGE_PADDING = 12;
 
 type CurbFlowMapProps = {
   zones?: GeoJsonFeatureCollection;
   mode?: PlannerMode;
-  variant?: "risk" | "blindspot" | "patrol" | "planner";
+  variant?: "risk" | "blindspot" | "patrol" | "planner" | "coverageGap";
   onZoneClick?: (zoneId: string) => void;
 };
 
@@ -40,6 +40,11 @@ type MapTooltip = {
   blindspotRisk: number | null;
   action: string;
   records: number | null;
+  activeDays: number | null;
+  coveragePct: number | null;
+  peakHour: number | null;
+  dominantViolation: string | null;
+  gapLevel: string | null;
 };
 
 function emptyFeatureCollection(): GeoJsonFeatureCollection {
@@ -99,6 +104,21 @@ function blindspotFillColor(): unknown[] {
   ];
 }
 
+function coverageGapFillColor(): unknown[] {
+  const coveragePct = toNumberExpression("coverage_pct", 1);
+  const totalViolations = toNumberExpression("total_violations");
+  return [
+    "case",
+    ["all", ["<", coveragePct, 0.2], [">=", totalViolations, 100]],
+    "rgb(185, 28, 28)",
+    ["all", ["<", coveragePct, 0.35], [">=", totalViolations, 80]],
+    "rgb(234, 88, 12)",
+    ["<", coveragePct, 0.35],
+    "rgb(217, 119, 6)",
+    "rgb(37, 99, 235)",
+  ];
+}
+
 function patrolFillColor(): unknown[] {
   const weightedDegree = toNumberExpression("patrol_weighted_degree");
   const routeCoverage = toNumberExpression("patrol_route_coverage");
@@ -141,6 +161,7 @@ function plannerFillColor(): unknown[] {
 
 function fillColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, mode: PlannerMode) {
   if (variant === "blindspot") return blindspotFillColor();
+  if (variant === "coverageGap") return coverageGapFillColor();
   if (variant === "patrol") return patrolFillColor();
   if (variant === "planner") return plannerFillColor();
   return riskFillColor(mode);
@@ -148,6 +169,7 @@ function fillColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>, 
 
 function lineColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>) {
   if (variant === "blindspot") return "rgb(88, 28, 135)";
+  if (variant === "coverageGap") return "rgb(124, 45, 18)";
   if (variant === "patrol") return "rgb(30, 64, 175)";
   if (variant === "planner") return "rgb(15, 23, 42)";
   return "rgb(124, 45, 18)";
@@ -187,6 +209,18 @@ function fillOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>
       0.012,
     ];
   }
+  if (variant === "coverageGap") {
+    const coveragePct = toNumberExpression("coverage_pct", 1);
+    const totalViolations = toNumberExpression("total_violations");
+    return [
+      "case",
+      ["all", ["<", coveragePct, 0.2], [">=", totalViolations, 100]],
+      0.2,
+      ["<", coveragePct, 0.35],
+      0.12,
+      0.04,
+    ];
+  }
   if (variant === "planner") {
     return ["case", ["==", ["get", "planner_selected"], true], 0.42, 0.015];
   }
@@ -205,6 +239,10 @@ function glowOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>
   if (variant === "patrol") {
     const weightedDegree = toNumberExpression("patrol_weighted_degree");
     return ["interpolate", ["linear"], weightedDegree, 0, 0, 1, 0.12, 20, 0.28, 80, 0.42];
+  }
+  if (variant === "coverageGap") {
+    const gap = ["-", 1, toNumberExpression("coverage_pct", 1)] as unknown[];
+    return ["interpolate", ["linear"], gap, 0, 0.04, 0.4, 0.16, 0.7, 0.32, 1, 0.42];
   }
   if (variant === "planner") {
     return ["case", ["==", ["get", "planner_selected"], true], 0.28, 0];
@@ -225,6 +263,10 @@ function pointOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]
   if (variant === "patrol") {
     return ["case", ["==", ["get", "near_patrol_but_uncovered_flag"], true], 0.86, 0.04];
   }
+  if (variant === "coverageGap") {
+    const gap = ["-", 1, toNumberExpression("coverage_pct", 1)] as unknown[];
+    return ["interpolate", ["linear"], gap, 0, 0.18, 0.45, 0.58, 0.8, 0.88, 1, 0.95];
+  }
   const risk = riskValueExpression(mode);
   return ["interpolate", ["linear"], risk, 0, 0, 40, 0, 60, 0.4, 80, 0.82, 100, 0.95];
 }
@@ -238,6 +280,7 @@ function lineOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>
   void mode;
   if (variant === "planner") return ["case", ["==", ["get", "planner_selected"], true], 0.42, 0.02];
   if (variant === "blindspot") return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.04, 15, 0.16];
+  if (variant === "coverageGap") return ["interpolate", ["linear"], ["zoom"], 9, 0.02, 12, 0.08, 15, 0.2];
   if (variant === "patrol") return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.035, 15, 0.14];
   return ["interpolate", ["linear"], ["zoom"], 9, 0, 12, 0.035, 15, 0.14];
 }
@@ -260,6 +303,10 @@ function heatWeightForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>,
       0.52,
       0.18,
     ];
+  }
+  if (variant === "coverageGap") {
+    const gap = ["-", 1, toNumberExpression("coverage_pct", 1)] as unknown[];
+    return ["interpolate", ["linear"], gap, 0, 0.12, 0.35, 0.45, 0.65, 0.78, 0.9, 1];
   }
   if (variant === "planner") {
     return ["case", ["==", ["get", "planner_selected"], true], 1, 0.02];
@@ -301,6 +348,23 @@ function heatColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>):
       "rgba(13, 148, 136, 0.62)",
       1,
       "rgba(220, 38, 38, 0.78)",
+    ];
+  }
+  if (variant === "coverageGap") {
+    return [
+      "interpolate",
+      ["linear"],
+      ["heatmap-density"],
+      0,
+      "rgba(37, 99, 235, 0)",
+      0.18,
+      "rgba(37, 99, 235, 0.34)",
+      0.42,
+      "rgba(217, 119, 6, 0.50)",
+      0.72,
+      "rgba(234, 88, 12, 0.72)",
+      1,
+      "rgba(185, 28, 28, 0.90)",
     ];
   }
   if (variant === "planner") {
@@ -510,6 +574,10 @@ function formatTooltipPercent(value: number | null) {
   return value === null ? "-" : `${(value * 100).toFixed(0)}%`;
 }
 
+function formatTooltipText(value: string | null) {
+  return value ? humanize(value.replace(/[[\]']/g, " ").replaceAll(",", " ")) : "-";
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -527,6 +595,11 @@ function featureScore(properties: Record<string, unknown>, variant: NonNullable<
     const routeCoverage = (asNumber(properties.patrol_route_coverage) ?? 0) * 100;
     const degree = Math.min(asNumber(properties.patrol_weighted_degree) ?? 0, 100);
     return Math.max(nearUncovered, routeCoverage, degree);
+  }
+  if (variant === "coverageGap") {
+    const coveragePct = asNumber(properties.coverage_pct);
+    const totalViolations = Math.min(asNumber(properties.total_violations) ?? 0, 250) / 250;
+    return Math.max(0, Math.min(100, (1 - (coveragePct ?? 1)) * 80 + totalViolations * 20));
   }
   if (variant === "planner") {
     if (properties.planner_selected !== true) return 0;
@@ -630,7 +703,12 @@ function tooltipFromFeature(feature: maplibregl.MapGeoJSONFeature, point: maplib
     coverageGap: asNumber(properties.coverage_gap),
     blindspotRisk: asNumber(properties.blindspot_risk_score),
     action: humanize(String(properties.recommended_action ?? "No action assigned")),
-    records: asNumber(properties.record_count),
+    records: asNumber(properties.record_count) ?? asNumber(properties.total_violations),
+    activeDays: asNumber(properties.active_days),
+    coveragePct: asNumber(properties.coverage_pct),
+    peakHour: asNumber(properties.peak_hour),
+    dominantViolation: typeof properties.dominant_violation === "string" ? String(properties.dominant_violation) : null,
+    gapLevel: typeof properties.gap_level === "string" ? String(properties.gap_level) : null,
   };
 }
 
@@ -941,6 +1019,32 @@ export function CurbFlowMap({ zones, mode = "balanced", variant = "risk", onZone
             <div className="text-slate-400">Recommended action</div>
             <div className="font-medium text-slate-900">{tooltip.action}</div>
           </div>
+          {tooltip.coveragePct !== null || tooltip.activeDays !== null || tooltip.peakHour !== null ? (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="rounded-md bg-blue-50 p-2">
+                <div className="text-blue-500">Active days</div>
+                <div className="font-semibold text-blue-950">{formatTooltipNumber(tooltip.activeDays, 0)}</div>
+              </div>
+              <div className="rounded-md bg-blue-50 p-2">
+                <div className="text-blue-500">Coverage</div>
+                <div className="font-semibold text-blue-950">{formatTooltipPercent(tooltip.coveragePct)}</div>
+              </div>
+              <div className="rounded-md bg-slate-50 p-2">
+                <div className="text-slate-400">Peak hour</div>
+                <div className="font-semibold text-slate-900">
+                  {tooltip.peakHour === null ? "-" : `${formatTooltipNumber(tooltip.peakHour, 0)}:00`}
+                </div>
+              </div>
+              <div className="rounded-md bg-slate-50 p-2">
+                <div className="text-slate-400">Gap level</div>
+                <div className="font-semibold text-slate-900">{formatTooltipText(tooltip.gapLevel)}</div>
+              </div>
+              <div className="col-span-2 rounded-md bg-slate-50 p-2">
+                <div className="text-slate-400">Dominant violation</div>
+                <div className="font-semibold text-slate-900">{formatTooltipText(tooltip.dominantViolation)}</div>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <Legend variant={variant} />

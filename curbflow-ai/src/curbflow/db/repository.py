@@ -14,6 +14,9 @@ from curbflow.db.duckdb_init import APP_DB_PATH, initialize_duckdb
 from curbflow.db import queries
 from curbflow.planner.optimizer import merge_planner_features, plan_enforcement
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ZONE_ASSIGNMENTS_PATH = PROJECT_ROOT / "data" / "interim" / "zone_assignments.parquet"
+
 
 def _payload_to_dict(payload: Any) -> dict[str, Any]:
     """Normalize dict, dataclass, or Pydantic-like payloads."""
@@ -66,6 +69,22 @@ class CurbFlowRepository:
     def _fetch_df(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> pd.DataFrame:
         with self._connect() as con:
             return con.execute(sql, params or []).fetchdf()
+
+    def _table_exists(self, table_name: str) -> bool:
+        """Return true when a DuckDB table or view exists in the app database."""
+
+        try:
+            frame = self._fetch_df(
+                """
+                SELECT count(*) AS table_count
+                FROM information_schema.tables
+                WHERE lower(table_name) = lower(?)
+                """,
+                [table_name],
+            )
+        except duckdb.Error:
+            return False
+        return bool(frame.iloc[0]["table_count"]) if not frame.empty else False
 
     def get_audit_summary(self) -> dict[str, Any]:
         """Return the data and bias audit summary."""
@@ -249,6 +268,474 @@ class CurbFlowRepository:
             )
         except duckdb.Error:
             return []
+
+    def get_morning_deployment_brief(
+        self,
+        station: str,
+        day_of_week: int,
+        slot: int,
+        top_k: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Return high-impact historical zones for a station/day/3-hour slot."""
+
+        if self._table_exists("zone_slot_summary"):
+            day_name = [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            ][int(day_of_week)]
+            return _records(
+                self._fetch_df(
+                    """
+                    SELECT
+                        zone_id,
+                        COALESCE(NULLIF(junction_name, ''), zone_id) AS zone_label,
+                        lower(police_station) AS police_station,
+                        lat AS latitude,
+                        lon AS longitude,
+                        pfdi_score,
+                        challan_count AS total_violations,
+                        repeat_veh_count AS repeat_offender_count,
+                        large_veh_pct / 100.0 AS large_vehicle_pct,
+                        double_parking_count AS double_parking_instances,
+                        dominant_vehicle_type,
+                        CASE
+                            WHEN double_parking_count > 0 THEN '[double_parking]'
+                            ELSE NULL
+                        END AS dominant_violation,
+                        CASE
+                            WHEN large_veh_pct > 10 OR double_parking_count > 2 THEN 'towing_required'
+                            WHEN repeat_veh_count > 5 AND challan_count > 50 THEN 'camera_patrol'
+                            WHEN repeat_veh_count > 3 THEN 'targeted_patrol'
+                            ELSE 'beat_patrol'
+                        END AS recommended_action
+                    FROM zone_slot_summary
+                    WHERE lower(police_station) = lower(?)
+                      AND dow = ?
+                      AND hour_slot = ?
+                    ORDER BY pfdi_score DESC, challan_count DESC
+                    LIMIT ?
+                    """,
+                    [station, day_name, int(slot), max(1, int(top_k))],
+                )
+            )
+        if not ZONE_ASSIGNMENTS_PATH.exists():
+            return []
+        return _records(
+            self._fetch_df(
+                """
+                WITH scoped AS (
+                    SELECT
+                        zone_id,
+                        lower(police_station) AS police_station,
+                        zone_centroid_lat,
+                        zone_centroid_lon,
+                        COALESCE(NULLIF(junction_name, ''), zone_id) AS junction_name,
+                        lower(COALESCE(effective_vehicle_type, updated_vehicle_type, vehicle_type, 'unknown')) AS vehicle_type_norm,
+                        parsed_violation_labels,
+                        row_obstruction_score,
+                        vehicle_number AS vehicle_key,
+                        hour
+                    FROM read_parquet(?)
+                    WHERE zone_id IS NOT NULL
+                      AND police_station IS NOT NULL
+                      AND lower(police_station) = lower(?)
+                      AND day_of_week = ?
+                      AND CAST(floor(hour / 3) AS INTEGER) = ?
+                ),
+                zone_base AS (
+                    SELECT
+                        zone_id,
+                        any_value(police_station) AS police_station,
+                        any_value(zone_centroid_lat) AS latitude,
+                        any_value(zone_centroid_lon) AS longitude,
+                        COALESCE(
+                            max(
+                                CASE
+                                    WHEN lower(junction_name) NOT IN ('no junction', 'unknown', 'nan')
+                                    THEN junction_name
+                                END
+                            ),
+                            zone_id
+                        ) AS zone_label,
+                        count(*) AS total_violations,
+                        avg(row_obstruction_score) AS avg_pfdi,
+                        sum(
+                            CASE
+                                WHEN regexp_matches(CAST(parsed_violation_labels AS VARCHAR), 'double_parking')
+                                THEN 1
+                                ELSE 0
+                            END
+                        ) AS double_parking_instances,
+                        avg(
+                            CASE
+                                WHEN vehicle_type_norm LIKE '%bus%'
+                                  OR vehicle_type_norm LIKE '%hgv%'
+                                  OR vehicle_type_norm LIKE '%lorry%'
+                                  OR vehicle_type_norm LIKE '%tanker%'
+                                  OR vehicle_type_norm LIKE '%tempo%'
+                                THEN 1
+                                ELSE 0
+                            END
+                        ) AS large_vehicle_pct
+                    FROM scoped
+                    GROUP BY zone_id
+                ),
+                vehicle_repeat AS (
+                    SELECT zone_id, count(*) AS repeat_offender_count
+                    FROM (
+                        SELECT zone_id, vehicle_key, count(*) AS vehicle_hits
+                        FROM scoped
+                        WHERE vehicle_key IS NOT NULL
+                        GROUP BY zone_id, vehicle_key
+                        HAVING count(*) >= 3
+                    )
+                    GROUP BY zone_id
+                ),
+                vehicle_rank AS (
+                    SELECT
+                        zone_id,
+                        vehicle_type_norm AS dominant_vehicle_type,
+                        row_number() OVER (PARTITION BY zone_id ORDER BY count(*) DESC, vehicle_type_norm) AS rn
+                    FROM scoped
+                    GROUP BY zone_id, vehicle_type_norm
+                ),
+                violation_rank AS (
+                    SELECT
+                        zone_id,
+                        CAST(parsed_violation_labels AS VARCHAR) AS dominant_violation,
+                        row_number() OVER (
+                            PARTITION BY zone_id
+                            ORDER BY count(*) DESC, CAST(parsed_violation_labels AS VARCHAR)
+                        ) AS rn
+                    FROM scoped
+                    GROUP BY zone_id, CAST(parsed_violation_labels AS VARCHAR)
+                ),
+                max_count AS (
+                    SELECT max(total_violations) AS max_zone_count
+                    FROM zone_base
+                )
+                SELECT
+                    b.zone_id,
+                    b.zone_label,
+                    b.police_station,
+                    b.latitude,
+                    b.longitude,
+                    least(
+                        100.0,
+                        0.72 * COALESCE(b.avg_pfdi, 0)
+                        + 0.28 * 100.0 * b.total_violations / NULLIF(m.max_zone_count, 0)
+                    ) AS pfdi_score,
+                    b.total_violations,
+                    COALESCE(vr.repeat_offender_count, 0) AS repeat_offender_count,
+                    b.large_vehicle_pct,
+                    b.double_parking_instances,
+                    v.dominant_vehicle_type,
+                    pl.dominant_violation,
+                    CASE
+                        WHEN b.large_vehicle_pct >= 0.10 OR b.double_parking_instances > 2 THEN 'towing_required'
+                        WHEN COALESCE(vr.repeat_offender_count, 0) > 5 AND b.total_violations > 50 THEN 'camera_patrol'
+                        WHEN COALESCE(vr.repeat_offender_count, 0) > 3 THEN 'targeted_patrol'
+                        ELSE 'beat_patrol'
+                    END AS recommended_action
+                FROM zone_base AS b
+                CROSS JOIN max_count AS m
+                LEFT JOIN vehicle_repeat AS vr USING (zone_id)
+                LEFT JOIN vehicle_rank AS v ON b.zone_id = v.zone_id AND v.rn = 1
+                LEFT JOIN violation_rank AS pl ON b.zone_id = pl.zone_id AND pl.rn = 1
+                ORDER BY pfdi_score DESC, b.total_violations DESC
+                LIMIT ?
+                """,
+                [
+                    str(ZONE_ASSIGNMENTS_PATH),
+                    station,
+                    int(day_of_week),
+                    int(slot),
+                    max(1, int(top_k)),
+                ],
+            )
+        )
+
+    def get_blindspot_hourly_volume(self) -> list[dict[str, Any]]:
+        """Return 24-hour record volume from row-level enforcement artifacts."""
+
+        if self._table_exists("hourly_volume"):
+            return _records(
+                self._fetch_df(
+                    """
+                    SELECT
+                        CAST(hour AS INTEGER) AS hour,
+                        CAST(record_count AS BIGINT) AS record_count,
+                        share
+                    FROM hourly_volume
+                    ORDER BY hour
+                    """
+                )
+            )
+        if ZONE_ASSIGNMENTS_PATH.exists():
+            return _records(
+                self._fetch_df(
+                    """
+                    SELECT
+                        CAST(hour AS INTEGER) AS hour,
+                        count(*)::BIGINT AS record_count,
+                        count(*) * 1.0 / sum(count(*)) OVER () AS share
+                    FROM read_parquet(?)
+                    WHERE hour IS NOT NULL
+                    GROUP BY hour
+                    ORDER BY hour
+                    """,
+                    [str(ZONE_ASSIGNMENTS_PATH)],
+                )
+            )
+        return self.get_hourly_audit()
+
+    def get_station_shift_cutoff(self, top_k: int = 20) -> list[dict[str, Any]]:
+        """Return aggregate station shift cutoff proxy using last active hour per officer-day."""
+
+        if self._table_exists("station_shift_cutoff"):
+            return _records(
+                self._fetch_df(
+                    """
+                    SELECT
+                        lower(police_station) AS police_station,
+                        median_last_hour,
+                        evening_active_day_share,
+                        total_officers,
+                        officer_days
+                    FROM station_shift_cutoff
+                    ORDER BY total_officers DESC, officer_days DESC
+                    LIMIT ?
+                    """,
+                    [max(1, int(top_k))],
+                )
+            )
+        if not ZONE_ASSIGNMENTS_PATH.exists():
+            return []
+        return _records(
+            self._fetch_df(
+                """
+                WITH daily AS (
+                    SELECT
+                        lower(police_station) AS police_station,
+                        created_by_id,
+                        CAST(created_datetime_ist AS DATE) AS record_date,
+                        max(CAST(hour AS INTEGER)) AS last_active_hour
+                    FROM read_parquet(?)
+                    WHERE police_station IS NOT NULL
+                      AND created_by_id IS NOT NULL
+                      AND hour IS NOT NULL
+                    GROUP BY 1, 2, 3
+                )
+                SELECT
+                    police_station,
+                    median(last_active_hour) AS median_last_hour,
+                    avg(CASE WHEN last_active_hour >= 15 THEN 1 ELSE 0 END) AS evening_active_day_share,
+                    count(DISTINCT created_by_id) AS total_officers,
+                    count(*) AS officer_days
+                FROM daily
+                GROUP BY police_station
+                ORDER BY officer_days DESC
+                LIMIT ?
+                """,
+                [str(ZONE_ASSIGNMENTS_PATH), max(1, int(top_k))],
+            )
+        )
+
+    def get_coverage_gaps(
+        self,
+        station: str | None = None,
+        top_k: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Return high-frequency zones with intermittent coverage for the patrol myopia map."""
+
+        if self._table_exists("zone_coverage_gaps"):
+            return _records(
+                self._fetch_df(
+                    """
+                    SELECT
+                        zone_id,
+                        lower(police_station) AS police_station,
+                        lat AS latitude,
+                        lon AS longitude,
+                        total_violations,
+                        unique_days AS active_days,
+                        coverage_pct / 100.0 AS coverage_pct,
+                        last_seen,
+                        peak_hour,
+                        junction_name,
+                        gap_severity,
+                        lower(gap_severity) AS gap_level,
+                        NULL::DOUBLE AS patrol_myopia_score,
+                        NULL::DOUBLE AS top_3_zone_share,
+                        NULL::DOUBLE AS morning_only_bias,
+                        NULL::DOUBLE AS zone_coverage_entropy,
+                        NULL::DOUBLE AS avg_pfdi
+                    FROM zone_coverage_gaps
+                    WHERE ((total_violations > 100 AND coverage_pct < 20)
+                        OR (total_violations > 50 AND coverage_pct < 35))
+                      AND (? IS NULL OR lower(police_station) = lower(?))
+                    ORDER BY
+                        CASE gap_severity WHEN 'HIGH' THEN 2 ELSE 1 END DESC,
+                        total_violations DESC
+                    LIMIT ?
+                    """,
+                    [station, station, max(1, int(top_k))],
+                )
+            )
+        if not ZONE_ASSIGNMENTS_PATH.exists():
+            return []
+        return _records(
+            self._fetch_df(
+                """
+                WITH base AS (
+                    SELECT
+                        lower(police_station) AS police_station,
+                        zone_id,
+                        zone_centroid_lat AS latitude,
+                        zone_centroid_lon AS longitude,
+                        date,
+                        hour,
+                        created_datetime_ist,
+                        row_obstruction_score,
+                        parsed_violation_labels
+                    FROM read_parquet(?)
+                    WHERE zone_id IS NOT NULL
+                      AND police_station IS NOT NULL
+                      AND (? IS NULL OR lower(police_station) = lower(?))
+                ),
+                zone_counts AS (
+                    SELECT
+                        police_station,
+                        zone_id,
+                        any_value(latitude) AS latitude,
+                        any_value(longitude) AS longitude,
+                        count(*) AS total_violations,
+                        count(DISTINCT date) AS active_days,
+                        count(DISTINCT date) / 150.0 AS coverage_pct,
+                        max(created_datetime_ist) AS last_seen,
+                        avg(row_obstruction_score) AS avg_pfdi
+                    FROM base
+                    GROUP BY police_station, zone_id
+                ),
+                hour_rank AS (
+                    SELECT
+                        zone_id,
+                        CAST(hour AS INTEGER) AS peak_hour,
+                        row_number() OVER (PARTITION BY zone_id ORDER BY count(*) DESC, hour) AS rn
+                    FROM base
+                    GROUP BY zone_id, hour
+                ),
+                violation_rank AS (
+                    SELECT
+                        zone_id,
+                        CAST(parsed_violation_labels AS VARCHAR) AS dominant_violation,
+                        row_number() OVER (
+                            PARTITION BY zone_id
+                            ORDER BY count(*) DESC, CAST(parsed_violation_labels AS VARCHAR)
+                        ) AS rn
+                    FROM base
+                    GROUP BY zone_id, CAST(parsed_violation_labels AS VARCHAR)
+                ),
+                station_totals AS (
+                    SELECT police_station, count(*) AS station_total
+                    FROM base
+                    GROUP BY police_station
+                ),
+                station_zone_counts AS (
+                    SELECT police_station, zone_id, count(*) AS zone_total
+                    FROM base
+                    GROUP BY police_station, zone_id
+                ),
+                station_ranked AS (
+                    SELECT
+                        police_station,
+                        zone_total,
+                        row_number() OVER (PARTITION BY police_station ORDER BY zone_total DESC) AS rn
+                    FROM station_zone_counts
+                ),
+                station_entropy AS (
+                    SELECT
+                        z.police_station,
+                        CASE
+                            WHEN count(*) <= 1 THEN 0
+                            ELSE -sum(
+                                (zone_total * 1.0 / station_total)
+                                * ln(zone_total * 1.0 / station_total)
+                            ) / ln(count(*))
+                        END AS zone_coverage_entropy,
+                        sum(CASE WHEN rn <= 3 THEN zone_total ELSE 0 END) * 1.0
+                            / max(station_total) AS top_3_zone_share
+                    FROM station_ranked AS z
+                    JOIN station_totals AS t USING (police_station)
+                    GROUP BY z.police_station
+                ),
+                station_bias AS (
+                    SELECT
+                        police_station,
+                        avg(CASE WHEN hour >= 8 AND hour < 14 THEN 1 ELSE 0 END) AS morning_only_bias
+                    FROM base
+                    GROUP BY police_station
+                ),
+                station_myopia AS (
+                    SELECT
+                        e.police_station,
+                        e.top_3_zone_share,
+                        b.morning_only_bias,
+                        e.zone_coverage_entropy,
+                        least(
+                            100.0,
+                            greatest(
+                                0.0,
+                                100.0 * (
+                                    0.50 * e.top_3_zone_share
+                                    + 0.30 * b.morning_only_bias
+                                    + 0.20 * (1 - e.zone_coverage_entropy)
+                                )
+                            )
+                        ) AS patrol_myopia_score
+                    FROM station_entropy AS e
+                    JOIN station_bias AS b USING (police_station)
+                )
+                SELECT
+                    z.zone_id,
+                    z.police_station,
+                    z.latitude,
+                    z.longitude,
+                    z.total_violations,
+                    z.active_days,
+                    z.coverage_pct,
+                    z.last_seen,
+                    h.peak_hour,
+                    v.dominant_violation,
+                    CASE
+                        WHEN z.total_violations >= 100 AND z.coverage_pct < 0.20 THEN 'high'
+                        WHEN z.total_violations >= 50 AND z.coverage_pct < 0.35 THEN 'medium'
+                        ELSE 'low'
+                    END AS gap_level,
+                    m.patrol_myopia_score,
+                    m.top_3_zone_share,
+                    m.morning_only_bias,
+                    m.zone_coverage_entropy,
+                    z.avg_pfdi
+                FROM zone_counts AS z
+                LEFT JOIN hour_rank AS h ON z.zone_id = h.zone_id AND h.rn = 1
+                LEFT JOIN violation_rank AS v ON z.zone_id = v.zone_id AND v.rn = 1
+                LEFT JOIN station_myopia AS m ON z.police_station = m.police_station
+                WHERE (z.total_violations >= 100 AND z.coverage_pct < 0.20)
+                   OR (z.total_violations >= 50 AND z.coverage_pct < 0.35)
+                ORDER BY
+                    CASE gap_level WHEN 'high' THEN 2 WHEN 'medium' THEN 1 ELSE 0 END DESC,
+                    z.total_violations DESC
+                LIMIT ?
+                """,
+                [str(ZONE_ASSIGNMENTS_PATH), station, station, max(1, int(top_k))],
+            )
+        )
 
     def get_zone_details(self, zone_id: str, window_start: str | None = None) -> dict[str, Any]:
         """Return prediction and feature details for a single zone-window."""

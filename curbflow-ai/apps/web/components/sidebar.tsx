@@ -17,12 +17,12 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Hotspot Map", icon: LayoutDashboard },
   { href: "/audit", label: "Audit", icon: Activity },
   { href: "/hotspots", label: "Hotspots", icon: Siren },
-  { href: "/blindspots", label: "Blindspots", icon: EyeOff },
+  { href: "/blindspots", label: "Evening Blindspots", icon: EyeOff },
   { href: "/junction-basins", label: "Junction Basins", icon: GitBranch },
-  { href: "/patrol-digital-twin", label: "Patrol Twin", icon: Route },
+  { href: "/patrol-twin", label: "Patrol Twin", icon: Route },
   { href: "/planner", label: "Planner", icon: MapPinned },
   { href: "/metrics", label: "Metrics", icon: BarChart3 },
 ];
@@ -43,7 +43,9 @@ export function Sidebar() {
       <nav className="space-y-1">
         {items.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href === "/patrol-twin" && pathname === "/patrol-digital-twin");
           return (
             <Link
               key={item.href}

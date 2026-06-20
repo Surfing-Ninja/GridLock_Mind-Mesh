@@ -90,6 +90,67 @@ class RiskRow(BaseModel):
     explanation_json: str | None = None
 
 
+class MorningBriefRow(BaseModel):
+    """Historical morning deployment brief row."""
+
+    model_config = ConfigDict(extra="allow")
+
+    zone_id: str
+    zone_label: str | None = None
+    police_station: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    pfdi_score: float | None = None
+    total_violations: int | None = None
+    repeat_offender_count: int | None = None
+    large_vehicle_pct: float | None = None
+    double_parking_instances: int | None = None
+    dominant_vehicle_type: str | None = None
+    dominant_violation: str | None = None
+    recommended_action: str | None = None
+
+
+class BlindspotHourlyVolumeRow(BaseModel):
+    """Hour-of-day enforcement volume row for blindspot diagnosis."""
+
+    hour: int
+    record_count: int
+    share: float | None = None
+
+
+class StationShiftCutoffRow(BaseModel):
+    """Station-level shift cutoff proxy row."""
+
+    police_station: str
+    median_last_hour: float | None = None
+    evening_active_day_share: float | None = None
+    total_officers: int | None = None
+    officer_days: int | None = None
+
+
+class CoverageGapRow(BaseModel):
+    """Coverage-gap map row for station patrol myopia views."""
+
+    model_config = ConfigDict(extra="allow")
+
+    zone_id: str
+    police_station: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    total_violations: int | None = None
+    active_days: int | None = None
+    coverage_pct: float | None = None
+    last_seen: str | None = None
+    peak_hour: int | None = None
+    dominant_violation: str | None = None
+    gap_level: str | None = None
+    patrol_myopia_score: float | None = None
+    top_3_zone_share: float | None = None
+    morning_only_bias: float | None = None
+    zone_coverage_entropy: float | None = None
+    avg_pfdi: float | None = None
+
+
 class PatrolStationSummary(BaseModel):
     """Station-level aggregate patrol digital twin summary."""
 

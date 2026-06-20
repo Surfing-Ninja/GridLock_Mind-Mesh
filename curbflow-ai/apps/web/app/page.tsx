@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, EyeOff, MapPinned, Radar, ShieldCheck, Siren } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 import { CurbFlowMap } from "@/components/curbflow-map";
 import { StatCard } from "@/components/stat-card";
@@ -10,7 +11,17 @@ import { ZoneDetailsDrawer } from "@/components/zone-details-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAuditSummary, getBlindspots, getHotspots, getZoneDetails, getZonesGeoJson } from "@/lib/api";
+import {
+  getAuditSummary,
+  getBlindspots,
+  getCoverageGaps,
+  getHotspots,
+  getZoneDetails,
+  getZonesGeoJson,
+  type CoverageGapRow,
+  type GeoJsonFeatureCollection,
+  type RiskRow,
+} from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 import { useCurbFlowStore } from "@/lib/store";
 
@@ -63,6 +74,61 @@ function FeatureCard({
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function uniqueSorted(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function stationOptionsFrom(summary: unknown, rows: RiskRow[], gapRows: CoverageGapRow[]) {
+  const counts = asRecord(asRecord(summary).police_station_counts);
+  return uniqueSorted([
+    ...Object.keys(counts),
+    ...rows.map((row) => row.police_station),
+    ...gapRows.map((row) => row.police_station),
+  ]);
+}
+
+function coverageGapFeatureCollection(rows: CoverageGapRow[]): GeoJsonFeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: rows.flatMap((row) => {
+      if (row.longitude === null || row.longitude === undefined || row.latitude === null || row.latitude === undefined) {
+        return [];
+      }
+      const coveragePct = Number(row.coverage_pct ?? 1);
+      const gapScore = Math.max(0, Math.min(100, (1 - coveragePct) * 80 + Math.min(Number(row.total_violations ?? 0), 250) / 250 * 20));
+      return [
+        {
+          type: "Feature" as const,
+          geometry: {
+            type: "Point",
+            coordinates: [row.longitude, row.latitude],
+          },
+          properties: {
+            ...row,
+            zone_centroid_lon: row.longitude,
+            zone_centroid_lat: row.latitude,
+            deployment_priority: gapScore,
+            coverage_gap: Math.max(0, Math.min(1, 1 - coveragePct)),
+            predicted_pfdi: row.avg_pfdi,
+            record_count: row.total_violations,
+            recommended_action: row.gap_level === "high" ? "coverage_gap_audit" : "patrol_expansion",
+          },
+        },
+      ];
+    }),
+  };
+}
+
+function percent(value?: number | null) {
+  return value === null || value === undefined ? "-" : `${formatNumber(value * 100, 0)}%`;
+}
+
 function TopRows({
   title,
   rows,
@@ -106,10 +172,23 @@ export default function Page() {
   const selectedZoneId = useCurbFlowStore((state) => state.selectedZoneId);
   const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const mode = useCurbFlowStore((state) => state.plannerMode);
+  const [mapView, setMapView] = useState<"hotspot" | "coverage">("hotspot");
+  const [coverageStation, setCoverageStation] = useState("");
   const audit = useQuery({ queryKey: ["audit-summary"], queryFn: getAuditSummary });
   const zones = useQuery({ queryKey: ["zones", mode], queryFn: () => getZonesGeoJson({ mode }) });
   const hotspots = useQuery({ queryKey: ["hotspots", mode], queryFn: () => getHotspots({ top_k: 8, mode }) });
   const blindspots = useQuery({ queryKey: ["landing-blindspots"], queryFn: () => getBlindspots({ top_k: 8 }) });
+  const coverageGaps = useQuery({
+    queryKey: ["coverage-gaps", coverageStation],
+    queryFn: () => getCoverageGaps({ station: coverageStation || undefined, top_k: 600 }),
+  });
+  const coverageGeoJson = useMemo(() => coverageGapFeatureCollection(coverageGaps.data ?? []), [coverageGaps.data]);
+  const mapZones = mapView === "coverage" ? coverageGeoJson : zones.data;
+  const stationOptions = useMemo(
+    () => stationOptionsFrom(audit.data?.raw_summary, hotspots.data ?? [], coverageGaps.data ?? []),
+    [audit.data?.raw_summary, hotspots.data, coverageGaps.data],
+  );
+  const stationMyopia = coverageGaps.data?.[0];
   const zoneDetails = useQuery({
     queryKey: ["zone-details", selectedZoneId],
     queryFn: () => getZoneDetails(selectedZoneId ?? ""),
@@ -158,7 +237,7 @@ export default function Page() {
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <StatCard label="Records" value={audit.data?.row_count} detail="Theme 1 CSV" tone="visibility" />
+            <StatCard label="Records" value={audit.data?.row_count} detail="Nov 2023 - Apr 2024" tone="visibility" />
             <StatCard label="Morning count" value={audit.data?.morning_count} detail="07:30-15:30 IST" tone="hotspot" />
             <StatCard label="Evening count" value={audit.data?.evening_count} detail="15:30-20:30 IST" tone="blindspot" />
           </div>
@@ -203,36 +282,124 @@ export default function Page() {
         </div>
         <TabsContent value="map">
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <CurbFlowMap zones={zones.data} mode={mode} onZoneClick={setSelectedZoneId} />
+            <div className="space-y-3">
+              <Card>
+                <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="inline-flex rounded-lg bg-slate-100 p-1">
+                    <button
+                      type="button"
+                      className={`h-8 rounded-md px-3 text-sm font-medium ${
+                        mapView === "hotspot" ? "bg-white text-slate-950 shadow-sm" : "text-slate-600 hover:bg-white/70"
+                      }`}
+                      onClick={() => setMapView("hotspot")}
+                    >
+                      Hotspot view
+                    </button>
+                    <button
+                      type="button"
+                      className={`h-8 rounded-md px-3 text-sm font-medium ${
+                        mapView === "coverage" ? "bg-white text-slate-950 shadow-sm" : "text-slate-600 hover:bg-white/70"
+                      }`}
+                      onClick={() => setMapView("coverage")}
+                    >
+                      Coverage gap view
+                    </button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    Station
+                    <select
+                      value={coverageStation}
+                      onChange={(event) => setCoverageStation(event.target.value)}
+                      disabled={mapView !== "coverage"}
+                      className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 shadow-sm disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">All stations</option>
+                      {stationOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </CardContent>
+              </Card>
+              <CurbFlowMap
+                zones={mapZones}
+                mode={mode}
+                variant={mapView === "coverage" ? "coverageGap" : "risk"}
+                onZoneClick={setSelectedZoneId}
+              />
+            </div>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Radar className="h-4 w-4 text-blue-600" />
-                  Operating Picture
+                  {mapView === "coverage" ? "Patrol Myopia Score" : "Operating Picture"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="flex items-start gap-3 rounded-md bg-red-50 p-3 text-red-900">
-                  <Siren className="mt-0.5 h-4 w-4" />
-                  <div>
-                    <div className="font-medium">Observed hotspot layer</div>
-                    <p className="text-red-800">Red/orange zones indicate high observed PFDI and exploit priority.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-md bg-purple-50 p-3 text-purple-900">
-                  <EyeOff className="mt-0.5 h-4 w-4" />
-                  <div>
-                    <div className="font-medium">Blindspot layer</div>
-                    <p className="text-purple-800">Purple zones indicate high audit priority under sparse visibility.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-md bg-emerald-50 p-3 text-emerald-900">
-                  <ShieldCheck className="mt-0.5 h-4 w-4" />
-                  <div>
-                    <div className="font-medium">Planner feasibility</div>
-                    <p className="text-emerald-800">Green resource summaries show allocations that fit officer and tow limits.</p>
-                  </div>
-                </div>
+                {mapView === "coverage" ? (
+                  <>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                        {coverageStation || "All stations"}
+                      </div>
+                      <div className="mt-1 text-3xl font-semibold text-blue-950">
+                        {formatNumber(stationMyopia?.patrol_myopia_score, 1)}
+                      </div>
+                      <p className="mt-1 text-blue-800">
+                        Patrol Myopia Score from top-zone concentration, morning-only bias, and zone entropy.
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                        <span>Top 3 zone share</span>
+                        <span className="font-medium text-slate-950">{percent(stationMyopia?.top_3_zone_share)}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                        <span>8AM-2PM bias</span>
+                        <span className="font-medium text-slate-950">{percent(stationMyopia?.morning_only_bias)}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                        <span>Zone coverage entropy</span>
+                        <span className="font-medium text-slate-950">
+                          {formatNumber(stationMyopia?.zone_coverage_entropy, 2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                        <span>Coverage-gap zones</span>
+                        <span className="font-medium text-slate-950">{coverageGaps.data?.length ?? 0}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-orange-50 p-3 text-orange-900">
+                      High-gap zones have frequent historical records but appear on few active enforcement days.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-start gap-3 rounded-md bg-red-50 p-3 text-red-900">
+                      <Siren className="mt-0.5 h-4 w-4" />
+                      <div>
+                        <div className="font-medium">Observed hotspot layer</div>
+                        <p className="text-red-800">Red/orange zones indicate high observed PFDI and exploit priority.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 rounded-md bg-purple-50 p-3 text-purple-900">
+                      <EyeOff className="mt-0.5 h-4 w-4" />
+                      <div>
+                        <div className="font-medium">Blindspot layer</div>
+                        <p className="text-purple-800">Purple zones indicate high audit priority under sparse visibility.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 rounded-md bg-emerald-50 p-3 text-emerald-900">
+                      <ShieldCheck className="mt-0.5 h-4 w-4" />
+                      <div>
+                        <div className="font-medium">Planner feasibility</div>
+                        <p className="text-emerald-800">Green resource summaries show allocations that fit officer and tow limits.</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </section>

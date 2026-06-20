@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Play, Wand2 } from "lucide-react";
+import Link from "next/link";
 
 type PlannerControlsProps = {
   windowStart: string;
@@ -27,6 +28,19 @@ type PlannerControlsProps = {
   onSubmit: () => void;
   loading?: boolean;
 };
+
+function isLimitedHistoricalWindow(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const hour = Number(
+    new Intl.DateTimeFormat("en-IN", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Asia/Kolkata",
+    }).format(parsed),
+  );
+  return hour >= 15 && hour < 20;
+}
 
 export function PlannerControls({
   windowStart,
@@ -72,14 +86,26 @@ export function PlannerControls({
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase text-slate-500">Time window</span>
-            <Select value={windowStart} onChange={(event) => onWindowStartChange(event.target.value)}>
+            <Select
+              value={windowStart}
+              onChange={(event) => onWindowStartChange(event.target.value)}
+              className={isLimitedHistoricalWindow(windowStart) ? "border-amber-300 bg-amber-50" : undefined}
+            >
               <option value="">Select window</option>
               {windowOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {isLimitedHistoricalWindow(option) ? `⚠ ${option}` : option}
                 </option>
               ))}
             </Select>
+            {isLimitedHistoricalWindow(windowStart) ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-950">
+                ⚠ Limited historical data for this window — see{" "}
+                <Link href="/blindspots#evening-blindspot" className="underline underline-offset-2">
+                  Blindspot Analysis
+                </Link>
+              </div>
+            ) : null}
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase text-slate-500">Available officers</span>

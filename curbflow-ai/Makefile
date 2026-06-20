@@ -1,4 +1,4 @@
-.PHONY: setup audit preprocess pfdi zones features graph train-deep train-ranker predict recommend db api web full test ci clean
+.PHONY: setup audit preprocess pfdi zones features graph train-deep train-ranker predict recommend precompute-summaries db api web full test ci clean
 
 setup:
 	python -m pip install -r requirements.txt -r requirements-ml.txt
@@ -33,8 +33,12 @@ predict:
 recommend:
 	python scripts/run_recommendations.py
 
+precompute-summaries:
+	python scripts/precompute_zone_summaries.py
+
 db:
 	python scripts/seed_demo_db.py --rebuild
+	python scripts/precompute_zone_summaries.py
 
 api:
 	python -m uvicorn apps.api.main:app --reload --port 8000

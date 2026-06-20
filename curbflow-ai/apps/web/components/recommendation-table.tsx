@@ -10,6 +10,14 @@ function riskScore(row: PlannerRecommendation) {
   return Number(row.expected_relief ?? row.exploit_score ?? row.predicted_pfdi ?? 0);
 }
 
+function blindspotScore(row: PlannerRecommendation) {
+  return Number(row.blindspot_risk_score ?? row.explore_score ?? 0);
+}
+
+function label(value?: string | null) {
+  return String(value ?? "-").replaceAll("_", " ");
+}
+
 function reason(row: PlannerRecommendation) {
   if (row.explanation) return row.explanation;
   if (!row.explanation_json) return "-";
@@ -33,6 +41,7 @@ export function RecommendationTable({ rows = [] }: { rows?: PlannerRecommendatio
             <TableHead>Zone</TableHead>
             <TableHead>Risk score</TableHead>
             <TableHead>Blindspot score</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead>Action</TableHead>
             <TableHead>Officers</TableHead>
             <TableHead>Tow</TableHead>
@@ -46,8 +55,13 @@ export function RecommendationTable({ rows = [] }: { rows?: PlannerRecommendatio
               <TableCell>{row.recommendation_rank ?? index + 1}</TableCell>
               <TableCell className="font-medium text-slate-950">{row.zone_id}</TableCell>
               <TableCell>{formatNumber(riskScore(row), 1)}</TableCell>
-              <TableCell>{formatNumber(row.blindspot_risk_score, 1)}</TableCell>
-              <TableCell>{row.action}</TableCell>
+              <TableCell>{formatNumber(blindspotScore(row), 1)}</TableCell>
+              <TableCell>
+                <Badge variant={row.action_category === "blindspot" ? "purple" : "danger"}>
+                  {row.action_category === "blindspot" ? "Explore" : "Exploit"}
+                </Badge>
+              </TableCell>
+              <TableCell>{label(row.action)}</TableCell>
               <TableCell>
                 <Badge variant="success">{row.officers_required ?? 0}</Badge>
               </TableCell>
@@ -62,7 +76,7 @@ export function RecommendationTable({ rows = [] }: { rows?: PlannerRecommendatio
           ))}
           {!rows.length ? (
             <TableRow>
-              <TableCell colSpan={9} className="py-6 text-center text-slate-500">
+              <TableCell colSpan={10} className="py-6 text-center text-slate-500">
                 Run the planner to generate resource-constrained recommendations.
               </TableCell>
             </TableRow>

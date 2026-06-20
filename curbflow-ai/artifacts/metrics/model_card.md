@@ -201,6 +201,39 @@ BE-STHGT metrics are generated when deep training is run and saved to:
 artifacts/metrics/deep_metrics.json
 ```
 
+## Baseline Comparison
+
+CurbFlow compares the ensemble against simple operational baselines so model value is not judged against an empty reference point.
+
+Baseline methods:
+
+- **Count-only baseline**: ranks zones by observed historical violation counts.
+- **Historical PFDI baseline**: ranks zones by lagged and same-slot historical PFDI.
+- **Rule-based blindspot baseline**: ranks audit candidates by static potential, coverage gap, and evening prior.
+- **LightGBM LambdaRank**: ranks station-window candidates using engineered tabular features.
+- **BE-STHGT deep model**: learns latent risk with exposure-aware observed intensity.
+- **BE-STHGT + LightGBM ensemble**: combines deep rank score, LightGBM rank score, and rule blindspot score.
+
+The fast-demo path always generates dashboard-ready baseline and LightGBM/rule artifacts. Deep-model comparison is included when `make train-deep` or the full pipeline with deep training has produced:
+
+```text
+artifacts/models/be_sthgt_model.pt
+artifacts/metrics/deep_metrics.json
+```
+
+Primary comparison metrics:
+
+- Precision@5 and Precision@10 for top deployment candidates.
+- NDCG@5 and NDCG@10 for ranked station-window quality.
+- Station-wise Precision@5 to avoid only optimizing city-wide aggregate performance.
+- MAE PFDI and WAPE count for calibrated risk/count outputs.
+
+Interpretation:
+
+- A heatmap-style count baseline is useful for visible hotspots but cannot distinguish no-problem zones from no-visibility zones.
+- The rule blindspot baseline protects sparse evening audit behavior from being erased by observed-count training labels.
+- The ensemble is intended to combine visible disruption evidence with blindspot discovery, not to claim measured traffic-speed improvement.
+
 ## Known Limitations
 
 - The source dataset is an enforcement visibility dataset, not a complete record of all illegal parking.

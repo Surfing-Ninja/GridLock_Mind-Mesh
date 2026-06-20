@@ -14,16 +14,18 @@ const titles: Record<string, string> = {
   "/hotspots": "Observed Hotspots",
   "/blindspots": "Blindspots",
   "/junction-basins": "Junction Basins",
+  "/patrol-twin": "Patrol Digital Twin",
   "/patrol-digital-twin": "Patrol Digital Twin",
   "/planner": "Enforcement Planner",
   "/metrics": "Model Metrics",
 };
 
 const mobileLinks = [
-  { href: "/", label: "Home" },
+  { href: "/", label: "Map" },
   { href: "/audit", label: "Audit" },
   { href: "/hotspots", label: "Hotspots" },
   { href: "/blindspots", label: "Blindspots" },
+  { href: "/patrol-twin", label: "Patrol Twin" },
   { href: "/planner", label: "Planner" },
   { href: "/metrics", label: "Metrics" },
 ];
@@ -54,7 +56,9 @@ export function Header() {
             href={item.href}
             className={cn(
               "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200",
-              pathname === item.href && "bg-slate-950 text-white ring-slate-950",
+              (pathname === item.href ||
+                (item.href === "/patrol-twin" && pathname === "/patrol-digital-twin")) &&
+                "bg-slate-950 text-white ring-slate-950",
             )}
           >
             {item.label}

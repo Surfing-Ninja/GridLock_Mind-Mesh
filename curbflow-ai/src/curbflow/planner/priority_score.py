@@ -71,17 +71,29 @@ def add_candidate_priority_scores(
     }
     result = candidates.copy()
     expected_relief = []
-    source_exploit = []
-    source_explore = []
+    response_scores: dict[str, list[float]] = {
+        "predicted_pfdi": [],
+        "hotspot_probability": [],
+        "coverage_gap": [],
+        "blindspot_risk_score": [],
+        "exploit_score": [],
+        "explore_score": [],
+    }
     for _, candidate in result.iterrows():
         key = (str(candidate["zone_id"]), pd.Timestamp(candidate["window_start"]))
         row = row_lookup[key]
         expected_relief.append(action_priority_score(row, candidate, mode=mode))
-        source_exploit.append(numeric_value(row, "exploit_score", "observed_risk_score", "predicted_pfdi"))
-        source_explore.append(numeric_value(row, "explore_score", "blindspot_risk_score", "blindspot_risk"))
+        response_scores["predicted_pfdi"].append(numeric_value(row, "predicted_pfdi", "next_pfdi"))
+        response_scores["hotspot_probability"].append(numeric_value(row, "hotspot_probability", "next_hotspot"))
+        response_scores["coverage_gap"].append(numeric_value(row, "coverage_gap"))
+        response_scores["blindspot_risk_score"].append(
+            numeric_value(row, "blindspot_risk_score", "blindspot_risk", "explore_score")
+        )
+        response_scores["exploit_score"].append(numeric_value(row, "exploit_score", "observed_risk_score", "predicted_pfdi"))
+        response_scores["explore_score"].append(numeric_value(row, "explore_score", "blindspot_risk_score", "blindspot_risk"))
     result["expected_relief"] = pd.Series(expected_relief, index=result.index).clip(lower=0.0, upper=150.0)
-    result["source_exploit_score"] = source_exploit
-    result["source_explore_score"] = source_explore
+    for column, values in response_scores.items():
+        result[column] = pd.Series(values, index=result.index)
     resource_units = (
         pd.to_numeric(result["officers_required"], errors="coerce").fillna(0.0)
         + 1.5 * pd.to_numeric(result["tow_units_required"], errors="coerce").fillna(0.0)

@@ -40,20 +40,26 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$" if settings.is_development else None,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    app.include_router(health.router)
-    app.include_router(audit.router)
-    app.include_router(zones.router)
-    app.include_router(hotspots.router)
-    app.include_router(blindspots.router)
-    app.include_router(patrol.router)
-    app.include_router(planner.router)
-    app.include_router(metrics.router)
-    app.include_router(feedback.router)
+    routers = [
+        health.router,
+        audit.router,
+        zones.router,
+        hotspots.router,
+        blindspots.router,
+        patrol.router,
+        planner.router,
+        metrics.router,
+        feedback.router,
+    ]
+    for router in routers:
+        app.include_router(router)
+        app.include_router(router, prefix="/api", include_in_schema=False)
 
     @app.exception_handler(ValueError)
     async def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:

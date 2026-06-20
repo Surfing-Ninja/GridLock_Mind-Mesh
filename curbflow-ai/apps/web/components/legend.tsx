@@ -1,5 +1,5 @@
 type LegendProps = {
-  variant?: "risk" | "blindspot" | "patrol" | "planner";
+  variant?: "risk" | "blindspot" | "patrol" | "planner" | "coverageGap";
 };
 
 export function Legend({ variant = "risk" }: LegendProps) {
@@ -22,6 +22,12 @@ export function Legend({ variant = "risk" }: LegendProps) {
       { label: "High blindspot", className: "bg-purple-600" },
       { label: "Critical audit", className: "bg-fuchsia-700" },
     ],
+    coverageGap: [
+      { label: "Low gap", className: "bg-blue-600" },
+      { label: "Medium gap", className: "bg-amber-600" },
+      { label: "High gap", className: "bg-orange-600" },
+      { label: "Severe gap", className: "bg-red-700" },
+    ],
     risk: [
       { label: "Low", className: "bg-blue-600" },
       { label: "Elevated", className: "bg-yellow-600" },
@@ -31,6 +37,7 @@ export function Legend({ variant = "risk" }: LegendProps) {
   }[variant];
   const title = {
     blindspot: "Blindspot audit",
+    coverageGap: "Coverage gaps",
     patrol: "Patrol coverage",
     planner: "Planner actions",
     risk: "Risk priority",

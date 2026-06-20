@@ -100,6 +100,51 @@ export type PatrolRouteRow = {
   [key: string]: unknown;
 };
 
+export type MorningBriefRow = {
+  zone_id: string;
+  zone_label?: string | null;
+  police_station?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  pfdi_score?: number | null;
+  total_violations?: number | null;
+  repeat_offender_count?: number | null;
+  large_vehicle_pct?: number | null;
+  double_parking_instances?: number | null;
+  dominant_vehicle_type?: string | null;
+  dominant_violation?: string | null;
+  recommended_action?: string | null;
+  [key: string]: unknown;
+};
+
+export type StationShiftCutoffRow = {
+  police_station: string;
+  median_last_hour?: number | null;
+  evening_active_day_share?: number | null;
+  total_officers?: number | null;
+  officer_days?: number | null;
+};
+
+export type CoverageGapRow = {
+  zone_id: string;
+  police_station?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  total_violations?: number | null;
+  active_days?: number | null;
+  coverage_pct?: number | null;
+  last_seen?: string | null;
+  peak_hour?: number | null;
+  dominant_violation?: string | null;
+  gap_level?: string | null;
+  patrol_myopia_score?: number | null;
+  top_3_zone_share?: number | null;
+  morning_only_bias?: number | null;
+  zone_coverage_entropy?: number | null;
+  avg_pfdi?: number | null;
+  [key: string]: unknown;
+};
+
 export type ZoneDetails = RiskRow & {
   observed_pfdi?: number | null;
   bias_corrected_pfdi?: number | null;
@@ -170,12 +215,13 @@ function qs(params: Record<string, string | number | null | undefined>) {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   if (!response.ok) {
     const message = await response.text();
@@ -230,6 +276,27 @@ export function getPatrolRoutes(params: {
   top_k?: number;
 } = {}) {
   return request<PatrolRouteRow[]>(`/patrol/routes${qs(params)}`);
+}
+
+export function getMorningBrief(params: {
+  station: string;
+  dow?: string | number;
+  slot?: number;
+  top_k?: number;
+}) {
+  return request<MorningBriefRow[]>(`/api/planner/morning-brief${qs(params)}`);
+}
+
+export function getBlindspotHourlyVolume() {
+  return request<HourlyAuditRow[]>("/api/blindspots/hourly-volume");
+}
+
+export function getStationShiftCutoff(params: { top_k?: number } = {}) {
+  return request<StationShiftCutoffRow[]>(`/api/blindspots/station-shift-cutoff${qs(params)}`);
+}
+
+export function getCoverageGaps(params: { station?: string; top_k?: number } = {}) {
+  return request<CoverageGapRow[]>(`/api/hotspots/coverage-gaps${qs(params)}`);
 }
 
 export function getZoneDetails(zoneId: string, params: { window_start?: string } = {}) {
