@@ -1,0 +1,42 @@
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #fbfbf9;
+  color: #1c1c1e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: #1c3d8c;
+  color: #ffffff;
+}
+
+button, a, select, input {
+  letter-spacing: 0;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(1.6); }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-ticker {
+  animation: ticker-scroll 40s linear infinite;
+  white-space: nowrap;
+  display: inline-block;
+}

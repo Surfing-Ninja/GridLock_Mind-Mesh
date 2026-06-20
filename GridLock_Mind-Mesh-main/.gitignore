@@ -1,0 +1,78 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# macOS and editor metadata
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python caches and test outputs
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node and frontend build outputs
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+dist/
+build/
+.turbo/
+
+# Raw and generated data
+*.csv
+*.parquet
+*.duckdb
+*.db
+*.sqlite
+*.sqlite3
+data/raw/*
+data/interim/*
+data/processed/*
+data/app/*
+**/data/raw/*
+**/data/interim/*
+**/data/processed/*
+**/data/app/*
+
+# Model and report artifacts
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.onnx
+artifacts/models/*
+artifacts/metrics/*
+artifacts/reports/*
+**/artifacts/models/*
+**/artifacts/metrics/*
+**/artifacts/reports/*
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Keep scaffold directories visible
+!data/**/.gitkeep
+!artifacts/**/.gitkeep
+!**/data/**/.gitkeep
+!**/artifacts/**/.gitkeep

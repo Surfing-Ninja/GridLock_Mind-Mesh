@@ -1,0 +1,10 @@
+# Feature switches for exposure, blindspot, and operational intelligence.
+features:
+  enforcement_visibility_digital_twin: true
+  patrol_myopia_index: true
+  hidden_junction_basin_detection: true
+  repeat_vehicle_persistence_score: true
+  device_user_evidence_trust_score: true
+  patrol_transition_graph: true
+  road_corridor_risk: true
+  place_type_context: true

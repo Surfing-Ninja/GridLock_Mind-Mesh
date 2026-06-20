@@ -1,0 +1,26 @@
+# Dataset loading, schema, timestamp, zoning, and split configuration.
+dataset:
+  raw_csv_path: data/raw/police_parking_violations_nov2023_apr2024.csv
+  allowed_source: theme1_police_violation_csv_only
+  forbidden_external_datasets:
+    - ASTraM
+    - external_congestion
+
+time:
+  source_timezone: UTC
+  target_timezone: Asia/Kolkata
+  created_datetime_column: created_datetime
+  window_size_hours: 3
+  morning_operational_window: "07:30-15:30"
+  evening_operational_window: "15:30-20:30"
+
+zoning:
+  grid_size_meters: 300
+  h3_resolution_optional: 9
+  active_zone_min_records: 100
+
+split:
+  strategy: chronological
+  train_fraction: 0.70
+  validation_fraction: 0.15
+  test_fraction: 0.15

@@ -1,0 +1,11 @@
+# Graph relations used by BE-STHGT and graph feature builders.
+relations:
+  - zone_near_zone
+  - zone_belongs_to_station
+  - zone_recorded_by_device
+  - zone_recorded_by_user
+  - repeat_vehicle_seen_in_zone
+  - zone_in_junction_basin
+  - zone_on_road_corridor
+  - zone_has_place_type
+  - patrol_transition_zone_to_zone

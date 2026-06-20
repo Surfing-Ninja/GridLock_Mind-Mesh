@@ -1,0 +1,59 @@
+# PFDI scoring weights and confidence assumptions.
+violation_weights:
+  double_parking: 1.00
+  parking_in_main_road: 0.95
+  parking_near_road_crossing: 0.90
+  parking_near_traffic_light_or_zebra_crossing: 0.88
+  parking_opposite_another_parked_vehicle: 0.86
+  parking_near_bus_stop_school_hospital: 0.85
+  parking_other_than_bus_stop: 0.75
+  no_parking: 0.70
+  wrong_parking: 0.65
+  parking_on_footpath: 0.55
+  defective_number_plate: 0.15
+  minor_other: 0.10
+
+vehicle_obstruction_weights:
+  hgv_lorry_tanker_private_bus_bmtc_ksrtc_bus: 1.00
+  lgv_tempo_mini_lorry: 0.90
+  maxi_cab_van: 0.85
+  car_jeep: 0.75
+  goods_auto: 0.65
+  passenger_auto: 0.58
+  scooter_motorcycle: 0.35
+  moped: 0.25
+  unknown_other: 0.60
+
+validation_confidence_weights:
+  approved: 1.00
+  unknown_or_nan: 0.70
+  created1: 0.55
+  processing: 0.55
+  rejected: 0.25
+  duplicate: 0.10
+
+evidence_quality_weights:
+  validation_confidence: 0.50
+  device_trust: 0.25
+  user_trust: 0.15
+  station_evidence_quality: 0.10
+
+location_criticality_weights:
+  named_junction_flag: 0.35
+  main_road_flag: 0.25
+  crossing_or_signal_flag: 0.20
+  bus_stop_school_hospital_flag: 0.15
+  double_parking_flag: 0.05
+
+pfdi_row_obstruction_weights:
+  violation_severity: 0.42
+  vehicle_obstruction: 0.23
+  location_criticality: 0.20
+  repeat_pressure: 0.10
+  named_junction_flag: 0.05
+
+pfdi:
+  row_score_scale: 100
+  normalize_with_raw_impact_p99: true
+  max_score: 100
+  evening_zero_policy: low_evidence_not_low_risk
