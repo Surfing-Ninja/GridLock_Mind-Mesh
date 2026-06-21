@@ -103,6 +103,17 @@ class PredictionWindowRow(BaseModel):
     max_balanced_priority: float | None = None
 
 
+class PlaceSuggestion(BaseModel):
+    """Mappls place autosuggest result used for map focusing."""
+
+    place_name: str
+    place_address: str | None = None
+    eloc: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    source: str = "mappls_autosuggest"
+
+
 class MorningBriefRow(BaseModel):
     """Historical morning deployment brief row."""
 

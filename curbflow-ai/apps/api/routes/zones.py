@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import copy
+import json
 import time
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from apps.api.dependencies import (
     APISettings,
@@ -17,12 +21,13 @@ from apps.api.dependencies import (
     validate_station,
     validate_window_start,
 )
-from apps.api.schemas import PlannerMode, PredictionWindowRow, ZoneDetailsResponse
+from apps.api.schemas import PlaceSuggestion, PlannerMode, PredictionWindowRow, ZoneDetailsResponse
 from curbflow.db.repository import CurbFlowRepository
 
 
 router = APIRouter(prefix="/zones", tags=["zones"])
 _GEOJSON_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+BENGALURU_LAT_LON = "12.9716,77.5946"
 
 
 def _repository_cache_marker(repository: CurbFlowRepository) -> tuple[Any, ...]:
@@ -121,6 +126,91 @@ def prediction_windows(
 
     rows = repository.get_prediction_windows(station=station, limit=limit)
     return [PredictionWindowRow(**row) for row in sanitize_private_fields(rows)]
+
+
+def _float_from(payload: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    """Return the first numeric coordinate from a Mappls payload."""
+
+    for key in keys:
+        value = payload.get(key)
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed == parsed:
+            return parsed
+    return None
+
+
+def _mappls_suggestion(payload: dict[str, Any]) -> PlaceSuggestion | None:
+    """Normalize one Mappls autosuggest location."""
+
+    place_name = str(payload.get("placeName") or payload.get("name") or "").strip()
+    place_address = str(payload.get("placeAddress") or payload.get("address") or "").strip() or None
+    if not place_name and not place_address:
+        return None
+    latitude = _float_from(payload, ("latitude", "lat", "entryLatitude", "placeLatitude"))
+    longitude = _float_from(payload, ("longitude", "lng", "lon", "entryLongitude", "placeLongitude"))
+    return PlaceSuggestion(
+        place_name=place_name or place_address or "Mappls place",
+        place_address=place_address,
+        eloc=(str(payload.get("eLoc") or payload.get("eloc") or payload.get("ELoc") or "").strip() or None),
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+
+@router.get(
+    "/place-search",
+    response_model=list[PlaceSuggestion],
+    summary="Search places with Mappls Autosuggest",
+    description=(
+        "Proxy Mappls/MapMyIndia Autosuggest for the command-center place search. "
+        "The access token stays server-side, and the response is normalized to names and optional coordinates."
+    ),
+)
+def mappls_place_search(
+    q: str = Query(min_length=3, max_length=80, description="Place query, for example 'banaswadi' or 'ashok nagar'."),
+    limit: int = Query(default=6, ge=1, le=10),
+    settings: APISettings = Depends(get_settings),
+) -> list[PlaceSuggestion]:
+    """Return Mappls Autosuggest results biased around Bengaluru."""
+
+    token = (settings.mappls_access_token or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=503,
+            detail="Mappls Autosuggest is not configured. Set CURBFLOW_MAPPLS_ACCESS_TOKEN or MAPPLS_ACCESS_TOKEN.",
+        )
+    params = {
+        "query": q.strip(),
+        "access_token": token,
+        "location": BENGALURU_LAT_LON,
+        "region": "ind",
+    }
+    url = f"{settings.mappls_autosuggest_url}?{urlencode(params)}"
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": "CurbFlowAI/0.1"})
+    try:
+        with urlopen(request, timeout=settings.mappls_request_timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Mappls Autosuggest request failed with status {exc.code}.") from exc
+    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="Mappls Autosuggest request failed. Try again later.") from exc
+
+    raw_results = payload.get("suggestedLocations") or payload.get("results") or []
+    if not isinstance(raw_results, list):
+        return []
+    suggestions: list[PlaceSuggestion] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        suggestion = _mappls_suggestion(item)
+        if suggestion:
+            suggestions.append(suggestion)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
 
 
 @router.get(

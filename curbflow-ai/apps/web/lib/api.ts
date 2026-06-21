@@ -68,6 +68,15 @@ export type PredictionWindowRow = {
   max_balanced_priority?: number | null;
 };
 
+export type PlaceSuggestion = {
+  place_name: string;
+  place_address?: string | null;
+  eloc?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  source?: string;
+};
+
 export type PatrolStationSummary = {
   police_station?: string | null;
   total_records?: number | null;
@@ -260,6 +269,10 @@ export function getZonesGeoJson(params: {
 
 export function getPredictionWindows(params: { station?: string; limit?: number } = {}) {
   return request<PredictionWindowRow[]>(`/zones/windows${qs(params)}`);
+}
+
+export function searchPlaces(params: { q: string; limit?: number }) {
+  return request<PlaceSuggestion[]>(`/zones/place-search${qs(params)}`);
 }
 
 export function getHotspots(params: {

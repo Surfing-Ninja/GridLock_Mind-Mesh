@@ -221,6 +221,7 @@ Frontend stack:
 - Tailwind CSS
 - shadcn/ui primitives
 - MapLibre-compatible map experience
+- Mappls/MapMyIndia Autosuggest for place lookup on the command map
 - Recharts
 - TanStack Query
 - Zustand
@@ -374,6 +375,7 @@ GET  /health
 GET  /audit/summary
 GET  /audit/hourly
 GET  /zones/geojson
+GET  /zones/place-search
 GET  /hotspots
 GET  /blindspots
 GET  /zones/{zone_id}
@@ -385,6 +387,10 @@ POST /feedback
 ```
 
 Privacy rule: the API must not return raw `vehicle_number`, `device_id`, or `created_by_id`.
+
+Mappls usage: `/zones/place-search` proxies Mappls Autosuggest from the FastAPI backend. The token is read from
+`CURBFLOW_MAPPLS_ACCESS_TOKEN` or `MAPPLS_ACCESS_TOKEN`, so the frontend can focus the map on searched places without
+committing the key or using Mappls data in model training.
 
 ## Dashboard Pages
 

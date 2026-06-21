@@ -18,6 +18,7 @@ import {
   Play,
   Radio,
   Route,
+  Search,
   ShieldCheck,
   Siren,
   X,
@@ -36,7 +37,9 @@ import {
   getPredictionWindows,
   getZoneDetails,
   getZonesGeoJson,
+  searchPlaces,
   type GeoJsonFeatureCollection,
+  type PlaceSuggestion,
   type PredictionWindowRow,
   type RiskRow,
   type ZoneDetails,
@@ -106,6 +109,22 @@ function stationMatchShare(zones: GeoJsonFeatureCollection | undefined, station:
     (feature) => String(feature.properties?.police_station ?? "").trim().toLowerCase() === selected,
   ).length;
   return matching / zones.features.length;
+}
+
+function hasPlaceCoordinates(place: PlaceSuggestion) {
+  return (
+    place.latitude !== null &&
+    place.latitude !== undefined &&
+    place.longitude !== null &&
+    place.longitude !== undefined &&
+    Number.isFinite(Number(place.latitude)) &&
+    Number.isFinite(Number(place.longitude))
+  );
+}
+
+function matchingStationForPlace(place: PlaceSuggestion, stations: string[]) {
+  const text = `${place.place_name} ${place.place_address ?? ""}`.toLowerCase();
+  return stations.find((station) => text.includes(station.toLowerCase())) ?? "";
 }
 
 function hourFromWindow(value?: string | null) {
@@ -468,6 +487,13 @@ export default function Page() {
   const setMode = useCurbFlowStore((state) => state.setPlannerMode);
   const [selectedStation, setSelectedStation] = useState("");
   const [stationFocusNonce, setStationFocusNonce] = useState(0);
+  const [mapplsQuery, setMapplsQuery] = useState("");
+  const [mapplsFocus, setMapplsFocus] = useState<{
+    key: string;
+    center: [number, number];
+    zoom: number;
+    label: string;
+  } | null>(null);
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [replaySpeedMs, setReplaySpeedMs] = useState(1400);
@@ -523,6 +549,13 @@ export default function Page() {
     queryFn: () => getBlindspots({ top_k: 12, window_start: selectedWindow, station: selectedStation || undefined }),
     enabled: Boolean(selectedWindow),
   });
+  const mapplsSuggestions = useQuery({
+    queryKey: ["mappls-place-search", mapplsQuery],
+    queryFn: () => searchPlaces({ q: mapplsQuery.trim(), limit: 6 }),
+    enabled: mapplsQuery.trim().length >= 3,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
   const combinedRows = useMemo(() => [...(hotspots.data ?? []), ...(blindspots.data ?? [])], [blindspots.data, hotspots.data]);
   const stationOptions = useMemo(
     () => stationOptionsFrom(audit.data?.raw_summary, combinedRows),
@@ -563,6 +596,7 @@ export default function Page() {
         fitKey={stationScopeReady ? `home-station:${selectedStation}:${stationFocusNonce}:${zones.dataUpdatedAt}` : null}
         fitOnDataLoad={false}
         resetViewKey={!selectedStation ? `default-bengaluru:${stationFocusNonce}` : null}
+        focusTarget={mapplsFocus}
         legendClassName={cn(
           "bottom-auto top-[7.2rem] max-w-[220px] transition-all duration-300 ease-out",
           leftOpen ? "left-[376px]" : "left-4",
@@ -639,11 +673,78 @@ export default function Page() {
           </div>
 
           <label className="mb-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Mappls place search
+            <div className="relative mt-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={mapplsQuery}
+                onChange={(event) => setMapplsQuery(event.target.value)}
+                placeholder="Search Bengaluru place"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm font-normal normal-case text-slate-950 shadow-sm outline-none transition focus:border-slate-400"
+              />
+            </div>
+            {mapplsFocus ? (
+              <div className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-normal normal-case leading-5 text-blue-950">
+                Map focused on {mapplsFocus.label}. CurbFlow risk layers remain visible for context.
+              </div>
+            ) : null}
+            {mapplsSuggestions.data?.length ? (
+              <div className="mt-2 max-h-44 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                {mapplsSuggestions.data.map((place, index) => {
+                  const canFocus = hasPlaceCoordinates(place);
+                  return (
+                    <button
+                      key={`${place.eloc ?? place.place_name}-${index}`}
+                      className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs normal-case text-slate-700 transition last:border-b-0 hover:bg-slate-50"
+                      onClick={() => {
+                        setMapplsQuery(place.place_name);
+                        setSelectedZoneId(undefined);
+                        const matchedStation = matchingStationForPlace(place, stationOptions);
+                        if (canFocus) {
+                          setSelectedStation("");
+                          setStationFocusNonce((value) => value + 1);
+                          setMapplsFocus({
+                            key: `${place.eloc ?? place.place_name}:${Date.now()}`,
+                            center: [Number(place.longitude), Number(place.latitude)],
+                            zoom: 14.8,
+                            label: place.place_name,
+                          });
+                          return;
+                        }
+                        if (matchedStation) {
+                          setMapplsFocus(null);
+                          setSelectedStation(matchedStation);
+                          setStationFocusNonce((value) => value + 1);
+                        }
+                      }}
+                      type="button"
+                    >
+                      <span className="block font-semibold text-slate-950">{place.place_name}</span>
+                      <span className="block truncate text-slate-500">
+                        {place.place_address ?? (canFocus ? "Mappls coordinate result" : "No coordinate returned")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : mapplsQuery.trim().length >= 3 && mapplsSuggestions.isError ? (
+              <div className="mt-2 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-normal normal-case leading-5 text-amber-950">
+                Mappls search is unavailable. Add CURBFLOW_MAPPLS_ACCESS_TOKEN to enable live place suggestions.
+              </div>
+            ) : (
+              <span className="mt-2 block text-[11px] font-normal normal-case leading-5 text-slate-500">
+                Powered by Mappls Autosuggest. Use it for real place lookup without changing CurbFlow risk filters.
+              </span>
+            )}
+          </label>
+
+          <label className="mb-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
             Place / police station
             <select
               value={selectedStation}
               onChange={(event) => {
                 setSelectedStation(event.target.value);
+                setMapplsFocus(null);
                 setSelectedZoneId(undefined);
                 setStationFocusNonce((value) => value + 1);
               }}

@@ -59,6 +59,20 @@ class APISettings(BaseSettings):
         validation_alias=AliasChoices("CURBFLOW_CORS_ORIGINS", "CURBFLOW_ALLOWED_ORIGINS"),
     )
     geojson_cache_ttl_seconds: int = 120
+    mappls_access_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "CURBFLOW_MAPPLS_ACCESS_TOKEN",
+            "MAPPLS_ACCESS_TOKEN",
+            "MAPPLS_STATIC_KEY",
+            "MAPMYINDIA_API_KEY",
+        ),
+    )
+    mappls_autosuggest_url: str = Field(
+        default="https://search.mappls.com/search/places/autosuggest/json",
+        validation_alias=AliasChoices("CURBFLOW_MAPPLS_AUTOSUGGEST_URL", "MAPPLS_AUTOSUGGEST_URL"),
+    )
+    mappls_request_timeout_seconds: float = 4.0
     model_artifact_paths: list[Path] = Field(
         default_factory=lambda: list(DEFAULT_MODEL_ARTIFACT_PATHS),
     )

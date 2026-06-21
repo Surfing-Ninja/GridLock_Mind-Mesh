@@ -39,6 +39,11 @@ type CurbFlowMapProps = {
   resetViewKey?: string | number | null;
   defaultCenter?: [number, number];
   defaultZoom?: number;
+  focusTarget?: {
+    key: string;
+    center: [number, number];
+    zoom?: number;
+  } | null;
   legendClassName?: string;
   className?: string;
   label?: string;
@@ -815,6 +820,7 @@ export function CurbFlowMap({
   resetViewKey,
   defaultCenter = BENGALURU_CENTER,
   defaultZoom = BENGALURU_ZOOM,
+  focusTarget,
   legendClassName,
   className,
   label,
@@ -827,6 +833,7 @@ export function CurbFlowMap({
   const hasFitBoundsRef = useRef(false);
   const lastFitKeyRef = useRef<string | null>(null);
   const lastResetViewKeyRef = useRef<string | null>(null);
+  const lastFocusTargetKeyRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [tooltip, setTooltip] = useState<MapTooltip | null>(null);
   const featureCount = zones?.features.length ?? 0;
@@ -1140,6 +1147,23 @@ export function CurbFlowMap({
       essential: true,
     });
   }, [defaultCenter, defaultZoom, mapReady, resetViewKey]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady || !focusTarget) return;
+    if (lastFocusTargetKeyRef.current === focusTarget.key) return;
+    const [longitude, latitude] = focusTarget.center;
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return;
+    lastFocusTargetKeyRef.current = focusTarget.key;
+    map.easeTo({
+      center: focusTarget.center,
+      zoom: focusTarget.zoom ?? Math.max(map.getZoom(), 14.6),
+      pitch: 0,
+      bearing: map.getBearing(),
+      duration: 900,
+      essential: true,
+    });
+  }, [focusTarget, mapReady]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
