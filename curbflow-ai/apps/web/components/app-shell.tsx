@@ -16,7 +16,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="min-w-0 flex-1">
           <Header />
-          <main className="mx-auto w-full max-w-[1680px] p-3 sm:p-4 lg:p-6">{children}</main>
+          <main data-tour="page-content" className="mx-auto w-full max-w-[1680px] p-3 sm:p-4 lg:p-6">
+            {children}
+          </main>
         </div>
       </div>
     </div>

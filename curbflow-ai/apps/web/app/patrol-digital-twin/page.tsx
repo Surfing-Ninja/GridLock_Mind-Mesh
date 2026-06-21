@@ -235,7 +235,7 @@ export default function PatrolDigitalTwinPage() {
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 md:grid-cols-4">
+      <section data-tour="patrol-kpis" className="grid gap-3 md:grid-cols-4">
         <StatCard label="Stations scored" value={summaryRows.length} />
         <StatCard label="Patrol-connected zones" value={connectedZones} />
         <StatCard label="Nearby uncovered zones" value={nearbyUncoveredZones} />
@@ -252,7 +252,7 @@ export default function PatrolDigitalTwinPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 xl:grid-cols-3">
+      <section data-tour="patrol-myopia" className="grid gap-3 xl:grid-cols-3">
         {summaryRows.slice(0, 6).map((row, index) => (
           <StationMyopiaCard key={row.police_station ?? `station-${index}`} row={row} />
         ))}
@@ -265,7 +265,7 @@ export default function PatrolDigitalTwinPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section data-tour="patrol-map" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <CurbFlowMap
           zones={zones.data}
           mode="balanced"
@@ -273,7 +273,7 @@ export default function PatrolDigitalTwinPage() {
           selectedZoneId={selectedZoneId}
           onZoneClick={setSelectedZoneId}
         />
-        <div className="space-y-4">
+        <div className="space-y-4" data-tour="patrol-routes">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -330,7 +330,7 @@ export default function PatrolDigitalTwinPage() {
 
       <RecommendationPanel summaryRows={summaryRows} routes={routeRows} />
 
-      <section className="grid gap-4">
+      <section data-tour="patrol-routes" className="grid gap-4">
         <RouteTable title="Zones Frequently Connected By Patrol Transitions" rows={frequentRoutes} onSelect={setSelectedZoneId} />
         <RouteTable title="High-Coverage Patrol Loops" rows={patrolLoops} onSelect={setSelectedZoneId} />
         <RouteTable title="Nearby Uncovered Zones" rows={uncoveredRoutes} onSelect={setSelectedZoneId} />

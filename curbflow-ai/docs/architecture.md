@@ -119,10 +119,11 @@ Main pages:
 - `/planner`
 - `/metrics`
 
-The API base URL is configurable with:
+The API routing is configurable with:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_BASE_URL=/api
+CURBFLOW_API_INTERNAL_URL=<FastAPI backend URL>
 ```
 
 The app also supports the older `NEXT_PUBLIC_API_BASE` variable for compatibility.

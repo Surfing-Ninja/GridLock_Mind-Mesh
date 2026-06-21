@@ -426,6 +426,22 @@ function ZoneBrief({
 
 function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step: number) => void; onClose: () => void }) {
   const current = tourSteps[step];
+  const compactTour = typeof window !== "undefined" && (window.innerWidth < 1180 || window.innerHeight < 720);
+  const cardStyle: CSSProperties = compactTour
+    ? {
+        left: "1rem",
+        right: "1rem",
+        bottom: "1rem",
+        width: "auto",
+        maxHeight: "calc(100vh - 2rem)",
+        overflowY: "auto",
+      }
+    : {
+        ...current.card,
+        maxHeight: "calc(100vh - 2rem)",
+        overflowY: "auto",
+      };
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div
@@ -433,8 +449,8 @@ function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step:
         style={current.spotlight}
       />
       <div
-        className="curbflow-tour-card absolute w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl"
-        style={current.card}
+        className="curbflow-tour-card fixed w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl"
+        style={cardStyle}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>

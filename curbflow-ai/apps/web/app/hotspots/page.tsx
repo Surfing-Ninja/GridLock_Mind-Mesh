@@ -27,7 +27,7 @@ export default function HotspotsPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-red-200 bg-red-50">
+      <Card data-tour="hotspots-warning" className="border-red-200 bg-red-50">
         <CardContent className="flex gap-3">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-red-700" />
           <p className="text-sm font-medium text-red-950">
@@ -37,7 +37,7 @@ export default function HotspotsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section data-tour="hotspots-kpis" className="grid gap-3 md:grid-cols-3">
         <StatCard label="Displayed hotspots" value={hotspots.data?.length ?? 0} detail="Ranked by observed risk" tone="hotspot" />
         <StatCard label="Top PFDI" value={topHotspot?.predicted_pfdi} detail={topHotspot?.zone_id ?? "Waiting for API"} tone="hotspot" />
         <StatCard
@@ -49,7 +49,7 @@ export default function HotspotsPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
-        <div className="space-y-2">
+        <div data-tour="hotspots-map" className="space-y-2">
           <CurbFlowMap
             zones={zones.data}
             mode={mode}
@@ -63,7 +63,7 @@ export default function HotspotsPage() {
             underrepresented in this dataset.
           </p>
         </div>
-        <div className="max-h-[620px] overflow-y-auto pr-1">
+        <div data-tour="hotspots-list" className="max-h-[620px] overflow-y-auto pr-1">
           <HotspotTable rows={hotspots.data} onSelect={setSelectedZoneId} />
         </div>
       </section>

@@ -195,9 +195,9 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-5">
-      <section className="curbflow-audit-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section data-tour="audit-hero" className="curbflow-audit-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_520px]">
-          <div className="space-y-4">
+          <div data-tour="audit-hero-copy" className="space-y-4">
             <Badge variant="info">Evidence audit</Badge>
             <div>
               <h1 className="text-2xl font-semibold tracking-normal text-slate-950">
@@ -231,7 +231,7 @@ export default function AuditPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section data-tour="audit-tabs" className="grid gap-3 lg:grid-cols-3">
         {auditViews.map((view) => {
           const Icon = view.icon;
           const active = activeView === view.id;
@@ -244,6 +244,7 @@ export default function AuditPage() {
                 "curbflow-audit-card rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md",
                 active ? "border-slate-950 ring-2 ring-slate-950/10" : "border-slate-200",
               )}
+              data-tour={`audit-tab-${view.id}`}
             >
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-950 text-white">
@@ -259,8 +260,10 @@ export default function AuditPage() {
       </section>
 
       {activeView === "overview" ? (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <HourlyChart data={hourly.data} />
+        <section data-tour="audit-overview" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div data-tour="audit-hourly-chart">
+            <HourlyChart data={hourly.data} />
+          </div>
           <div className="space-y-4">
             <Card className="curbflow-audit-card">
               <CardHeader>

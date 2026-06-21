@@ -288,8 +288,11 @@ Run the frontend:
 ```bash
 cd apps/web
 npm install
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --port 3000
+npm run dev -- --port 3000
 ```
+
+Frontend API routing is configured through `apps/web/.env.local`. Use
+`NEXT_PUBLIC_API_BASE_URL=/api` and `CURBFLOW_API_INTERNAL_URL=<FastAPI backend URL>`.
 
 ## Makefile Commands
 

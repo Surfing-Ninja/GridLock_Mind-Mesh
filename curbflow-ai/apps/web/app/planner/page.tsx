@@ -539,7 +539,7 @@ export default function PlannerPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+      <Card data-tour="planner-brief" className="border-orange-200 bg-gradient-to-br from-orange-50 to-white">
         <CardHeader>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -631,58 +631,62 @@ export default function PlannerPage() {
         </CardContent>
       </Card>
 
-      <PlannerControls
-        windowStart={windowStart}
-        station={station}
-        officers={officers}
-        towUnits={towUnits}
-        mode={mode}
-        demoPresets={demoPresets}
-        activeDemoId={selectedDemoId}
-        stationOptions={controlStationOptions}
-        windowOptions={controlWindowOptions}
-        onWindowStartChange={(value) => {
-          setWindowStart(value);
-          setRows([]);
-          setSelectedDemoId(undefined);
-          setSelectedZoneId(undefined);
-          setPlannerMapFitNonce((current) => current + 1);
-        }}
-        onStationChange={(value) => {
-          const nextWindows = windowOptionsFrom(optionRows, value);
-          setStation(value);
-          setWindowStart(nextWindows[0] ?? "");
-          setRows([]);
-          setSelectedDemoId(undefined);
-          setSelectedZoneId(undefined);
-          setPlannerMapFitNonce((current) => current + 1);
-        }}
-        onOfficersChange={setOfficers}
-        onTowUnitsChange={setTowUnits}
-        onModeChange={changeMode}
-        onDemoPreset={applyDemoPreset}
-        onSubmit={submitPlanner}
-        loading={planner.isPending}
-      />
+      <div data-tour="planner-controls">
+        <PlannerControls
+          windowStart={windowStart}
+          station={station}
+          officers={officers}
+          towUnits={towUnits}
+          mode={mode}
+          demoPresets={demoPresets}
+          activeDemoId={selectedDemoId}
+          stationOptions={controlStationOptions}
+          windowOptions={controlWindowOptions}
+          onWindowStartChange={(value) => {
+            setWindowStart(value);
+            setRows([]);
+            setSelectedDemoId(undefined);
+            setSelectedZoneId(undefined);
+            setPlannerMapFitNonce((current) => current + 1);
+          }}
+          onStationChange={(value) => {
+            const nextWindows = windowOptionsFrom(optionRows, value);
+            setStation(value);
+            setWindowStart(nextWindows[0] ?? "");
+            setRows([]);
+            setSelectedDemoId(undefined);
+            setSelectedZoneId(undefined);
+            setPlannerMapFitNonce((current) => current + 1);
+          }}
+          onOfficersChange={setOfficers}
+          onTowUnitsChange={setTowUnits}
+          onModeChange={changeMode}
+          onDemoPreset={applyDemoPreset}
+          onSubmit={submitPlanner}
+          loading={planner.isPending}
+        />
+      </div>
 
       {planner.error ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{planner.error.message}</div>
       ) : null}
 
-      <PlannerInsights
-        rows={rows}
-        mode={mode}
-        station={station}
-        windowStart={windowStart}
-        officers={officers}
-        towUnits={towUnits}
-        selectedPreset={selectedDemo}
-        loading={planner.isPending}
-      />
+      <div data-tour="planner-insights">
+        <PlannerInsights
+          rows={rows}
+          mode={mode}
+          station={station}
+          windowStart={windowStart}
+          officers={officers}
+          towUnits={towUnits}
+          selectedPreset={selectedDemo}
+          loading={planner.isPending}
+        />
+      </div>
 
       <ResourceSummary rows={rows} />
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section data-tour="planner-map" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <CurbFlowMap
           zones={plannerZones}
           mode={mode}
@@ -695,7 +699,9 @@ export default function PlannerPage() {
       </section>
 
       <ExplanationPanel mode={mode} onModeChange={changeMode} loading={planner.isPending} />
-      <RecommendationTable rows={rows} />
+      <div data-tour="planner-table">
+        <RecommendationTable rows={rows} />
+      </div>
     </div>
   );
 }

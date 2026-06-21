@@ -52,7 +52,7 @@ function EvidenceGapSection() {
   }, []);
 
   return (
-    <Card id="evening-blindspot" className="border-purple-200">
+    <Card id="evening-blindspot" data-tour="blindspots-evidence-gap" className="border-purple-200">
       <CardHeader>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -143,7 +143,7 @@ export default function BlindspotsPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-purple-200 bg-purple-50">
+      <Card data-tour="blindspots-warning" className="border-purple-200 bg-purple-50">
         <CardContent className="flex gap-3">
           <EyeOff className="mt-0.5 h-5 w-5 shrink-0 text-purple-700" />
           <p className="text-sm font-medium text-purple-950">
@@ -153,7 +153,7 @@ export default function BlindspotsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section data-tour="blindspots-kpis" className="grid gap-3 md:grid-cols-3">
         <StatCard label="Displayed blindspots" value={blindspots.data?.length ?? 0} detail="Audit-priority zones" tone="blindspot" />
         <StatCard label="Top blindspot risk" value={topBlindspot?.blindspot_risk_score} detail={topBlindspot?.zone_id ?? "Waiting for API"} tone="blindspot" />
         <StatCard
@@ -166,7 +166,7 @@ export default function BlindspotsPage() {
 
       <EvidenceGapSection />
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
+      <section data-tour="blindspots-map" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
         <CurbFlowMap
           zones={zones.data}
           mode="discovery"

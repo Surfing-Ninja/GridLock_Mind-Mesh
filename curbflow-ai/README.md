@@ -252,10 +252,11 @@ Start the FastAPI server:
 make api
 ```
 
-Default local API:
+Default local API host and port are configured by:
 
 ```text
-http://localhost:8000
+CURBFLOW_API_HOST
+CURBFLOW_API_PORT
 ```
 
 Key endpoints:

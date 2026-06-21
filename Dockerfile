@@ -5,6 +5,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/curbflow-ai/src:/app/curbflow-ai \
+    CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
     NEXT_PUBLIC_API_BASE_URL=/api \
     PORT=7860
 

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Annotated, Any
 
 import pandas as pd
 from fastapi import HTTPException, Query
 from pydantic import AliasChoices, Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 SRC_PATH = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_PATH) not in sys.path:
@@ -54,7 +55,7 @@ class APISettings(BaseSettings):
         default=APP_DB_PATH,
         validation_alias=AliasChoices("CURBFLOW_DB_PATH", "CURBFLOW_DUCKDB_PATH"),
     )
-    cors_origins: list[str] = Field(
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: list(DEFAULT_CORS_ORIGINS),
         validation_alias=AliasChoices("CURBFLOW_CORS_ORIGINS", "CURBFLOW_ALLOWED_ORIGINS"),
     )
@@ -73,7 +74,7 @@ class APISettings(BaseSettings):
         validation_alias=AliasChoices("CURBFLOW_MAPPLS_AUTOSUGGEST_URL", "MAPPLS_AUTOSUGGEST_URL"),
     )
     mappls_request_timeout_seconds: float = 4.0
-    model_artifact_paths: list[Path] = Field(
+    model_artifact_paths: Annotated[list[Path], NoDecode] = Field(
         default_factory=lambda: list(DEFAULT_MODEL_ARTIFACT_PATHS),
     )
 
@@ -89,7 +90,7 @@ class APISettings(BaseSettings):
             if not stripped:
                 return []
             if stripped.startswith("["):
-                return value
+                return json.loads(stripped)
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
         return value
 
@@ -103,7 +104,7 @@ class APISettings(BaseSettings):
             if not stripped:
                 return []
             if stripped.startswith("["):
-                return value
+                return [Path(item) for item in json.loads(stripped)]
             return [Path(item.strip()) for item in stripped.split(",") if item.strip()]
         return value
 

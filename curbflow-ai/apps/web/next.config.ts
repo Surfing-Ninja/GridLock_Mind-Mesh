@@ -2,12 +2,17 @@
 
 import type { NextConfig } from "next";
 
+const apiInternalUrl = process.env.CURBFLOW_API_INTERNAL_URL;
+
 const nextConfig: NextConfig = {
   async rewrites() {
+    if (!apiInternalUrl) {
+      return [];
+    }
     return [
       {
         source: "/api/:path*",
-        destination: "http://127.0.0.1:8000/:path*",
+        destination: `${apiInternalUrl}/:path*`,
       },
     ];
   },

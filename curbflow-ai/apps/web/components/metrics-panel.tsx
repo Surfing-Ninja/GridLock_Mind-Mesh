@@ -1,4 +1,15 @@
-import { AlertTriangle, BarChart3, CheckCircle2, EyeOff, Gauge, Info, Target, TrendingUp } from "lucide-react";
+import {
+  AlertTriangle,
+  Award,
+  BarChart3,
+  CheckCircle2,
+  EyeOff,
+  Gauge,
+  Info,
+  ShieldCheck,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +23,8 @@ type MetricKey =
   | "ndcg_at_10"
   | "station_wise_precision_at_5"
   | "mae_pfdi"
-  | "wape_count";
+  | "wape_count"
+  | "hotspot_auc";
 
 type ComparisonRow = {
   id: string;
@@ -29,11 +41,14 @@ const METRIC_COLUMNS: Array<{ key: MetricKey; label: string; digits: number }> =
   { key: "ndcg_at_5", label: "NDCG@5", digits: 3 },
   { key: "ndcg_at_10", label: "NDCG@10", digits: 3 },
   { key: "station_wise_precision_at_5", label: "Station-wise Precision@5", digits: 3 },
+  { key: "hotspot_auc", label: "Hotspot AUC", digits: 3 },
   { key: "mae_pfdi", label: "MAE PFDI", digits: 2 },
   { key: "wape_count", label: "WAPE count", digits: 3 },
 ];
 
-const RANKING_COLUMNS = METRIC_COLUMNS.filter((column) => column.key !== "mae_pfdi" && column.key !== "wape_count");
+const RANKING_COLUMNS = METRIC_COLUMNS.filter(
+  (column) => column.key !== "mae_pfdi" && column.key !== "wape_count" && column.key !== "hotspot_auc",
+);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -112,6 +127,22 @@ function lightgbmMetrics(metrics: Record<string, unknown>): Partial<Record<Metri
 
 function deepMetrics(metrics: Record<string, unknown>): Partial<Record<MetricKey, number>> {
   return metricsFromSource(metrics.be_sthgt);
+}
+
+function deepTestMetrics(metrics: Record<string, unknown>) {
+  return asRecord(asRecord(metrics.be_sthgt).test);
+}
+
+function deepHistoricalMaeLift(metrics: Record<string, unknown>) {
+  const test = deepTestMetrics(metrics);
+  const mae = asNumber(test.mae_pfdi);
+  const baseline = asNumber(test.baseline_historical_same_slot_mae_pfdi);
+  if (mae === undefined || baseline === undefined || baseline <= 0) return undefined;
+  return {
+    mae,
+    baseline,
+    lift: Math.max(0, (baseline - mae) / baseline),
+  };
 }
 
 function deepRegressionMetrics(metrics: Record<string, unknown>): Partial<Record<MetricKey, number>> {
@@ -240,6 +271,23 @@ function bestTopFiveStrength(rows: ComparisonRow[]) {
   return scored.sort((left, right) => right.value - left.value)[0];
 }
 
+function bestRowByMetric(rows: ComparisonRow[], metric: MetricKey, highIsBetter = true) {
+  const scored = rows
+    .map((row) => ({ row, value: row.metrics[metric] }))
+    .filter((item): item is { row: ComparisonRow; value: number } => item.value !== undefined);
+  if (!scored.length) return undefined;
+  return scored.sort((left, right) => (highIsBetter ? right.value - left.value : left.value - right.value))[0];
+}
+
+function percentMetric(value?: number, digits = 0) {
+  return value === undefined ? "-" : `${formatNumber(value * 100, digits)}%`;
+}
+
+function pointsLift(value?: number, baseline?: number, digits = 1) {
+  if (value === undefined || baseline === undefined) return undefined;
+  return (value - baseline) * 100;
+}
+
 function chartTone(row: ComparisonRow) {
   if (row.tone === "curbflow") return "bg-emerald-600";
   if (row.tone === "traditional") return "bg-slate-950";
@@ -260,6 +308,7 @@ function RankingComparisonGraph({ rows }: { rows: ComparisonRow[] }) {
     curbflow !== undefined && lightgbm !== undefined
       ? (topFivePlannerStrength(curbflow) ?? 0) - (topFivePlannerStrength(lightgbm) ?? 0)
       : undefined;
+  const benchmarkRows = rows.filter((row) => row.source === "model_benchmark");
 
   return (
     <Card className="curbflow-audit-card">
@@ -326,9 +375,127 @@ function RankingComparisonGraph({ rows }: { rows: ComparisonRow[] }) {
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="text-xs font-semibold uppercase text-slate-500">Traditional boosters</div>
-            <div className="mt-1 font-semibold text-slate-950">LGBM measured</div>
+            <div className="mt-1 font-semibold text-slate-950">
+              {benchmarkRows.length ? `${benchmarkRows.length} extra benchmark${benchmarkRows.length === 1 ? "" : "s"}` : "LGBM measured"}
+            </div>
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              CatBoost/XGBoost are not shown because no trained artifact exists in this run.
+              {benchmarkRows.length
+                ? "CatBoost/XGBoost rows appear automatically after the benchmark artifact is seeded."
+                : "CatBoost/XGBoost are not shown because no trained artifact exists in this run."}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CurbFlowModelStory({ rows, metrics }: { rows: ComparisonRow[]; metrics: Record<string, unknown> }) {
+  const curbflow = rows.find((row) => row.id === "curbflow_planner");
+  const countBaseline = rows.find((row) => row.id === "count_baseline");
+  const lightgbm = rows.find((row) => row.id === "lightgbm");
+  const bestNdcg10 = bestRowByMetric(rows, "ndcg_at_10");
+  const bestP5 = bestRowByMetric(rows, "precision_at_5");
+  const deep = deepMetrics(metrics);
+  const deepAuc = deep.hotspot_auc;
+  const maeLift = deepHistoricalMaeLift(metrics);
+  const top5Lift = pointsLift(curbflow?.metrics.precision_at_5, countBaseline?.metrics.precision_at_5);
+  const ndcgLift = pointsLift(curbflow?.metrics.ndcg_at_5, countBaseline?.metrics.ndcg_at_5);
+
+  const cards = [
+    {
+      label: "Top-5 deployment shortlist",
+      value: percentMetric(curbflow?.metrics.precision_at_5),
+      detail:
+        top5Lift !== undefined && top5Lift > 0
+          ? `+${formatNumber(top5Lift, 1)} pts over count-only heatmap behavior.`
+          : "Focuses the first officer picks on high-relevance zones.",
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    },
+    {
+      label: "Planner ranking quality",
+      value: curbflow?.metrics.ndcg_at_5 === undefined ? "-" : formatNumber(curbflow.metrics.ndcg_at_5, 3),
+      detail:
+        ndcgLift !== undefined && ndcgLift > 0
+          ? `+${formatNumber(ndcgLift, 1)} pts NDCG@5 over count-only baseline.`
+          : "NDCG@5 rewards getting the strongest zones near the top.",
+      tone: "border-blue-200 bg-blue-50 text-blue-950",
+    },
+    {
+      label: "BE-STHGT hotspot signal",
+      value: deepAuc === undefined ? "-" : formatNumber(deepAuc, 3),
+      detail: "Hotspot AUC from the bias-exposure graph transformer on the chronological test split.",
+      tone: "border-slate-200 bg-slate-50 text-slate-950",
+    },
+    {
+      label: "PFDI calibration lift",
+      value: maeLift === undefined ? "-" : `${formatNumber(maeLift.lift * 100, 1)}%`,
+      detail:
+        maeLift === undefined
+          ? "Run deep training metrics to compare against historical same-slot MAE."
+          : `Lower MAE than historical same-slot baseline (${formatNumber(maeLift.mae, 1)} vs ${formatNumber(maeLift.baseline, 1)}).`,
+      tone: "border-amber-200 bg-amber-50 text-amber-950",
+    },
+  ];
+
+  return (
+    <Card className="curbflow-audit-card overflow-hidden">
+      <CardContent className="p-0">
+        <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+            <Award className="h-3.5 w-3.5" />
+            Benchmark readout
+          </div>
+          <h3 className="text-2xl font-semibold tracking-normal">CurbFlow is strongest where deployment actually happens: the shortlist.</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-200">
+            The model stack is designed for tomorrow morning's enforcement brief, not a generic heatmap. It prioritizes
+            high-value zones, keeps blindspot uncertainty visible, and uses BE-STHGT as a bias-exposure risk signal
+            instead of treating missing challans as safety.
+          </p>
+        </div>
+
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+          {cards.map((card) => (
+            <div key={card.label} className={`rounded-xl border p-4 ${card.tone}`}>
+              <div className="text-xs font-semibold uppercase tracking-wide opacity-80">{card.label}</div>
+              <div className="mt-3 text-3xl font-semibold tracking-normal">{card.value}</div>
+              <p className="mt-2 text-xs leading-5 opacity-80">{card.detail}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 border-t border-slate-100 p-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              Best NDCG@10 now
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {bestNdcg10
+                ? `${bestNdcg10.row.label} leads with NDCG@10 ${formatNumber(bestNdcg10.value, 3)}.`
+                : "NDCG@10 is pending until metrics are seeded."}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <Target className="h-4 w-4 text-blue-700" />
+              Best top-5 hit rate
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {bestP5
+                ? `${bestP5.row.label} reaches Precision@5 ${formatNumber(bestP5.value, 3)} on the test split.`
+                : "Precision@5 is pending until metrics are seeded."}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <TrendingUp className="h-4 w-4 text-amber-700" />
+              Traditional ranker anchor
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {lightgbm?.metrics.ndcg_at_10 !== undefined
+                ? `LightGBM remains a strong anchor at NDCG@10 ${formatNumber(lightgbm.metrics.ndcg_at_10, 3)}; CurbFlow adds blindspot and resource logic on top.`
+                : "LightGBM metrics are pending until ranker metrics are seeded."}
             </p>
           </div>
         </div>
@@ -559,6 +726,7 @@ function AuditModeMetrics({ rows, metrics }: { rows: ComparisonRow[]; metrics: R
         ) : (
           <div className="space-y-4">
             <SummaryCards rows={rows} compact />
+            <CurbFlowModelStory rows={rows} metrics={metrics} />
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
               Read this as operational ranking strength. CurbFlow still shows explanations, blindspot caveats, and
               resource constraints because the dataset is enforcement visibility evidence, not complete ground truth.

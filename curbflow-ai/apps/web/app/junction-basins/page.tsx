@@ -16,7 +16,7 @@ export default function JunctionBasinsPage() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card data-tour="junction-explainer">
         <CardHeader>
           <CardTitle>Hidden Junction Basin Detection</CardTitle>
         </CardHeader>
@@ -26,16 +26,18 @@ export default function JunctionBasinsPage() {
         </CardContent>
       </Card>
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_520px]">
-        <CurbFlowMap
-          zones={zones.data}
-          mode="discovery"
-          variant="blindspot"
-          selectedZoneId={selectedZoneId}
-          onZoneClick={setSelectedZoneId}
-          className="sm:h-[620px]"
-          label="Junction spillover layer"
-        />
-        <div className="max-h-[620px] overflow-y-auto pr-1">
+        <div data-tour="junction-map">
+          <CurbFlowMap
+            zones={zones.data}
+            mode="discovery"
+            variant="blindspot"
+            selectedZoneId={selectedZoneId}
+            onZoneClick={setSelectedZoneId}
+            className="sm:h-[620px]"
+            label="Junction spillover layer"
+          />
+        </div>
+        <div data-tour="junction-list" className="max-h-[620px] overflow-y-auto pr-1">
           <BlindSpotTable rows={spillovers.data} onSelect={setSelectedZoneId} />
         </div>
       </section>
