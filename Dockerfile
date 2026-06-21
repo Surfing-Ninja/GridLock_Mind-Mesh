@@ -15,21 +15,9 @@ RUN apt-get update \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
+COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir \
-        fastapi \
-        "uvicorn[standard]" \
-        pandas \
-        numpy \
-        pyarrow \
-        duckdb \
-        pyyaml \
-        pydantic \
-        pydantic-settings \
-        python-dotenv \
-        shapely \
-        networkx \
-        geopy
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY curbflow-ai/apps/web/package.json curbflow-ai/apps/web/package-lock.json ./curbflow-ai/apps/web/
 RUN cd curbflow-ai/apps/web && npm ci
@@ -42,6 +30,4 @@ WORKDIR /app/curbflow-ai
 
 EXPOSE 7860
 
-CMD python scripts/seed_demo_db.py --rebuild && \
-    python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 & \
-    cd apps/web && npm run start -- --hostname 0.0.0.0 --port 7860
+CMD ["bash", "-lc", "set -euo pipefail; python scripts/seed_demo_db.py --rebuild; python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 & API_PID=$!; cd apps/web; npm run start -- --hostname 0.0.0.0 --port ${PORT:-7860} & WEB_PID=$!; trap 'kill $API_PID $WEB_PID 2>/dev/null || true' EXIT; wait -n $API_PID $WEB_PID"]
