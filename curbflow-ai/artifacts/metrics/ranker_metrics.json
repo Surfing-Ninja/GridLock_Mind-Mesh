@@ -1,0 +1,497 @@
+{
+  "model": "lightgbm_lambdarank",
+  "config": {
+    "train_fraction": 0.7,
+    "val_fraction": 0.15,
+    "objective": "lambdarank",
+    "metric": "ndcg",
+    "ndcg_eval_at": [
+      5,
+      10,
+      20
+    ],
+    "learning_rate": 0.05,
+    "num_leaves": 63,
+    "n_estimators": 800,
+    "feature_fraction": 0.85,
+    "bagging_fraction": 0.85,
+    "bagging_freq": 3,
+    "min_data_in_leaf": 20,
+    "early_stopping_rounds": 50,
+    "random_state": 42
+  },
+  "feature_columns": [
+    "airport_zone",
+    "bias_corrected_pfdi",
+    "blindspot_risk",
+    "commercial_market",
+    "community_id",
+    "corridor_pfdi",
+    "corridor_recent_pfdi",
+    "corridor_risk_component",
+    "coverage_gap",
+    "day_of_week",
+    "device_trust_mean",
+    "double_parking_share",
+    "entertainment",
+    "evening_peak_audit",
+    "evening_severity_prior",
+    "evidence_quality_score_mean",
+    "exposure",
+    "exposure_bias_correction_factor",
+    "geo_neighbor_mean_pfdi",
+    "growth_7d_vs_21d",
+    "hidden_junction_spillover",
+    "hidden_no_junction_spillover_count",
+    "hidden_no_junction_spillover_impact",
+    "high_static_potential",
+    "hour",
+    "institutional",
+    "is_active_graph_zone",
+    "is_weekend",
+    "junction_basin_pfdi",
+    "junction_basin_risk_component",
+    "lag_1_pfdi",
+    "lag_2_pfdi",
+    "lag_56_pfdi",
+    "lag_8_pfdi",
+    "large_vehicle_share",
+    "large_vehicle_share_component",
+    "location_criticality_component",
+    "location_criticality_mean",
+    "low_enforcement_visibility",
+    "main_road_parking_share",
+    "median_exposure_station_time",
+    "near_patrol_but_uncovered",
+    "near_patrol_but_uncovered_flag",
+    "observed_pfdi",
+    "p90_historical_pfdi_component",
+    "patrol_expansion_opportunity_component",
+    "patrol_in_degree",
+    "patrol_myopia_station",
+    "patrol_out_degree",
+    "patrol_pagerank_x",
+    "patrol_pagerank_y",
+    "patrol_route_coverage",
+    "patrol_route_coverage_norm",
+    "patrol_weighted_degree",
+    "pattern_neighbor_mean_pfdi",
+    "peak_priority",
+    "persistence_score",
+    "raw_impact",
+    "record_count",
+    "recurrence_component",
+    "religious_place",
+    "repeat_persistence_component",
+    "repeat_pressure_mean",
+    "repeat_vehicle_count",
+    "repeat_vehicle_share",
+    "residential_layout",
+    "rolling_1d_pfdi",
+    "rolling_21d_pfdi",
+    "rolling_7d_pfdi",
+    "same_slot_21d_avg_pfdi",
+    "same_slot_7d_avg_pfdi",
+    "same_vehicle_different_zone_6h_count",
+    "same_vehicle_same_zone_6h_count",
+    "scita_success_rate",
+    "scita_success_rate_norm",
+    "severe_violation_count",
+    "static_potential",
+    "station_evidence_quality",
+    "station_hour_activity",
+    "station_hour_activity_norm",
+    "station_neighbor_mean_pfdi",
+    "transit_node",
+    "two_wheeler_share",
+    "type_correction_rate",
+    "uncertainty",
+    "unique_created_by_user_count",
+    "unique_created_by_user_count_norm",
+    "unique_device_count",
+    "unique_device_count_norm",
+    "user_trust_mean",
+    "validation_coverage",
+    "validation_coverage_norm",
+    "vehicle_graph_degree",
+    "zero_window_weight"
+  ],
+  "feature_count": 94,
+  "row_counts": {
+    "train": 36647,
+    "val": 6593,
+    "test": 6436
+  },
+  "group_counts": {
+    "train": 14517,
+    "val": 2836,
+    "test": 2715
+  },
+  "best_iteration": 9,
+  "comparison_table": [
+    {
+      "model": "lightgbm_lambdarank",
+      "split": "train",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.9,
+      "ndcg_at_5": 0.6973515901634045,
+      "ndcg_at_10": 0.6674725612990228,
+      "station_wise_precision_at_5": 0.7777777777777777,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "count_only_baseline",
+      "split": "train",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.6608122925431527,
+      "ndcg_at_10": 0.591240325467181,
+      "station_wise_precision_at_5": 0.7222222222222222,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "historical_pfdi_baseline",
+      "split": "train",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.5639368789339221,
+      "ndcg_at_10": 0.5526611656444144,
+      "station_wise_precision_at_5": 0.6000000000000001,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "rule_blindspot_baseline",
+      "split": "train",
+      "precision_at_5": 0.2,
+      "precision_at_10": 0.5,
+      "ndcg_at_5": 0.3455039427161475,
+      "ndcg_at_10": 0.38932250323087453,
+      "station_wise_precision_at_5": 0.588888888888889,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "lightgbm_lambdarank",
+      "split": "val",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.7,
+      "ndcg_at_5": 0.6347508688022446,
+      "ndcg_at_10": 0.6489337257869132,
+      "station_wise_precision_at_5": 0.6566037735849057,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "count_only_baseline",
+      "split": "val",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.7227265726449517,
+      "ndcg_at_10": 0.6640410856862139,
+      "station_wise_precision_at_5": 0.6566037735849056,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "historical_pfdi_baseline",
+      "split": "val",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.5,
+      "ndcg_at_5": 0.7416088716490667,
+      "ndcg_at_10": 0.5628165830160886,
+      "station_wise_precision_at_5": 0.5962264150943396,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "rule_blindspot_baseline",
+      "split": "val",
+      "precision_at_5": 0.4,
+      "precision_at_10": 0.4,
+      "ndcg_at_5": 0.40299642384388124,
+      "ndcg_at_10": 0.4093465950935631,
+      "station_wise_precision_at_5": 0.5622641509433963,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "lightgbm_lambdarank",
+      "split": "test",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.8,
+      "ndcg_at_5": 0.72272653993353,
+      "ndcg_at_10": 0.7389147498027098,
+      "station_wise_precision_at_5": 0.7230769230769231,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "count_only_baseline",
+      "split": "test",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.5,
+      "ndcg_at_5": 0.6749890909027346,
+      "ndcg_at_10": 0.5933877424929889,
+      "station_wise_precision_at_5": 0.7,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "historical_pfdi_baseline",
+      "split": "test",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.18832368513857117,
+      "ndcg_at_10": 0.23198141324834692,
+      "station_wise_precision_at_5": 0.6730769230769231,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "rule_blindspot_baseline",
+      "split": "test",
+      "precision_at_5": 0.2,
+      "precision_at_10": 0.2,
+      "ndcg_at_5": 0.536438637256595,
+      "ndcg_at_10": 0.38171122807750923,
+      "station_wise_precision_at_5": 0.5538461538461539,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "curbflow_conservative_planner",
+      "split": "train",
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.7,
+      "ndcg_at_5": 0.19822629936625313,
+      "ndcg_at_10": 0.410272507451321,
+      "station_wise_precision_at_5": 0.6740740740740742,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "curbflow_balanced_planner",
+      "split": "train",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.3149344436140789,
+      "ndcg_at_10": 0.3559262292852315,
+      "station_wise_precision_at_5": 0.6888888888888888,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "curbflow_discovery_planner",
+      "split": "train",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.4,
+      "ndcg_at_5": 0.5113250808989613,
+      "ndcg_at_10": 0.3794803486305887,
+      "station_wise_precision_at_5": 0.6666666666666665,
+      "row_count": 36647,
+      "group_count": 14517
+    },
+    {
+      "model": "curbflow_conservative_planner",
+      "split": "val",
+      "precision_at_5": 0.2,
+      "precision_at_10": 0.4,
+      "ndcg_at_5": 0.15947740074028244,
+      "ndcg_at_10": 0.3222437618241444,
+      "station_wise_precision_at_5": 0.6679245283018868,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "curbflow_balanced_planner",
+      "split": "val",
+      "precision_at_5": 0.4,
+      "precision_at_10": 0.5,
+      "ndcg_at_5": 0.0931701877518067,
+      "ndcg_at_10": 0.26529577338949656,
+      "station_wise_precision_at_5": 0.6528301886792454,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "curbflow_discovery_planner",
+      "split": "val",
+      "precision_at_5": 0.4,
+      "precision_at_10": 0.5,
+      "ndcg_at_5": 0.14977484147002226,
+      "ndcg_at_10": 0.26838343505109463,
+      "station_wise_precision_at_5": 0.6452830188679246,
+      "row_count": 6593,
+      "group_count": 2836
+    },
+    {
+      "model": "curbflow_conservative_planner",
+      "split": "test",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.7,
+      "ndcg_at_5": 0.7570287343648318,
+      "ndcg_at_10": 0.7228714924078399,
+      "station_wise_precision_at_5": 0.6730769230769231,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "curbflow_balanced_planner",
+      "split": "test",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.7,
+      "ndcg_at_5": 0.6884243782136499,
+      "ndcg_at_10": 0.6084785293065169,
+      "station_wise_precision_at_5": 0.6769230769230768,
+      "row_count": 6436,
+      "group_count": 2715
+    },
+    {
+      "model": "curbflow_discovery_planner",
+      "split": "test",
+      "precision_at_5": 0.8,
+      "precision_at_10": 0.6,
+      "ndcg_at_5": 0.6141364894659582,
+      "ndcg_at_10": 0.47303838767627077,
+      "station_wise_precision_at_5": 0.6769230769230768,
+      "row_count": 6436,
+      "group_count": 2715
+    }
+  ],
+  "top_features": [
+    {
+      "feature": "p90_historical_pfdi_component",
+      "importance_split": 40,
+      "importance_gain": 4850.999438762665
+    },
+    {
+      "feature": "station_neighbor_mean_pfdi",
+      "importance_split": 38,
+      "importance_gain": 1521.3768200874329
+    },
+    {
+      "feature": "patrol_pagerank_y",
+      "importance_split": 9,
+      "importance_gain": 665.5444493293762
+    },
+    {
+      "feature": "patrol_pagerank_x",
+      "importance_split": 10,
+      "importance_gain": 621.7650051116943
+    },
+    {
+      "feature": "static_potential",
+      "importance_split": 22,
+      "importance_gain": 548.0731182098389
+    },
+    {
+      "feature": "vehicle_graph_degree",
+      "importance_split": 16,
+      "importance_gain": 542.5702066421509
+    },
+    {
+      "feature": "median_exposure_station_time",
+      "importance_split": 23,
+      "importance_gain": 512.9751296043396
+    },
+    {
+      "feature": "geo_neighbor_mean_pfdi",
+      "importance_split": 15,
+      "importance_gain": 473.05434560775757
+    },
+    {
+      "feature": "exposure_bias_correction_factor",
+      "importance_split": 19,
+      "importance_gain": 430.33297061920166
+    },
+    {
+      "feature": "observed_pfdi",
+      "importance_split": 15,
+      "importance_gain": 395.0472078323364
+    },
+    {
+      "feature": "lag_1_pfdi",
+      "importance_split": 17,
+      "importance_gain": 390.3680896759033
+    },
+    {
+      "feature": "blindspot_risk",
+      "importance_split": 22,
+      "importance_gain": 388.44132947921753
+    },
+    {
+      "feature": "bias_corrected_pfdi",
+      "importance_split": 15,
+      "importance_gain": 359.4325895309448
+    },
+    {
+      "feature": "same_slot_21d_avg_pfdi",
+      "importance_split": 19,
+      "importance_gain": 351.24954080581665
+    },
+    {
+      "feature": "patrol_myopia_station",
+      "importance_split": 13,
+      "importance_gain": 326.09007358551025
+    },
+    {
+      "feature": "pattern_neighbor_mean_pfdi",
+      "importance_split": 8,
+      "importance_gain": 325.86009979248047
+    },
+    {
+      "feature": "lag_2_pfdi",
+      "importance_split": 14,
+      "importance_gain": 295.90729904174805
+    },
+    {
+      "feature": "rolling_1d_pfdi",
+      "importance_split": 10,
+      "importance_gain": 292.76090240478516
+    },
+    {
+      "feature": "lag_8_pfdi",
+      "importance_split": 12,
+      "importance_gain": 289.41020011901855
+    },
+    {
+      "feature": "corridor_pfdi",
+      "importance_split": 12,
+      "importance_gain": 270.8675994873047
+    },
+    {
+      "feature": "lag_56_pfdi",
+      "importance_split": 13,
+      "importance_gain": 267.11484813690186
+    },
+    {
+      "feature": "rolling_21d_pfdi",
+      "importance_split": 13,
+      "importance_gain": 262.1382894515991
+    },
+    {
+      "feature": "growth_7d_vs_21d",
+      "importance_split": 13,
+      "importance_gain": 257.3544006347656
+    },
+    {
+      "feature": "rolling_7d_pfdi",
+      "importance_split": 10,
+      "importance_gain": 254.93850326538086
+    },
+    {
+      "feature": "evidence_quality_score_mean",
+      "importance_split": 12,
+      "importance_gain": 251.0135383605957
+    }
+  ],
+  "curbflow_planner_evaluation_note": "Planner scores are evaluated by joining deployment priority outputs to next-window labels on the same chronological split. Regression MAE/WAPE remain reported from the deep model artifact.",
+  "curbflow_regression_source": {
+    "source": "deep_metrics.json:test",
+    "mae_pfdi": 73.7010621617738,
+    "wape_count": 0.9078893548474493
+  }
+}

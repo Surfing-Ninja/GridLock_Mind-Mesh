@@ -1,3 +1,11 @@
+---
+title: CurbFlow AI
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # CurbFlow AI
 
 CurbFlow AI is a full-stack, bias-aware parking enforcement intelligence system for the hackathon theme **Poor Visibility on Parking-Induced Congestion**.
