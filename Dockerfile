@@ -38,10 +38,11 @@ RUN cd curbflow-ai/apps/web && npm ci
 
 COPY . .
 
+RUN cd curbflow-ai && /opt/venv/bin/python scripts/seed_demo_db.py --rebuild
 RUN cd curbflow-ai/apps/web && NEXT_PUBLIC_API_BASE_URL=/api npm run build
 
 WORKDIR /app/curbflow-ai
 
 EXPOSE 7860
 
-CMD ["bash", "-lc", "set -euo pipefail; python scripts/seed_demo_db.py --rebuild; python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 & API_PID=$!; cd apps/web; npm run start -- --hostname 0.0.0.0 --port ${PORT:-7860} & WEB_PID=$!; trap 'kill $API_PID $WEB_PID 2>/dev/null || true' EXIT; wait -n $API_PID $WEB_PID"]
+CMD ["bash", "-c", "set -euo pipefail; /opt/venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 & API_PID=$!; cd apps/web; npm run start -- --hostname 0.0.0.0 --port ${PORT:-7860} & WEB_PID=$!; trap 'kill $API_PID $WEB_PID 2>/dev/null || true' EXIT; wait -n $API_PID $WEB_PID"]
