@@ -39,6 +39,7 @@ type CurbFlowMapProps = {
   resetViewKey?: string | number | null;
   defaultCenter?: [number, number];
   defaultZoom?: number;
+  legendClassName?: string;
   className?: string;
   label?: string;
 };
@@ -814,6 +815,7 @@ export function CurbFlowMap({
   resetViewKey,
   defaultCenter = BENGALURU_CENTER,
   defaultZoom = BENGALURU_ZOOM,
+  legendClassName,
   className,
   label,
 }: CurbFlowMapProps) {
@@ -1233,7 +1235,7 @@ export function CurbFlowMap({
           ) : null}
         </div>
       ) : null}
-      <Legend variant={variant} />
+      <Legend variant={variant} className={legendClassName} />
     </div>
   );
 }

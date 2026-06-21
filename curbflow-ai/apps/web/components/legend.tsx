@@ -1,8 +1,11 @@
+import { cn } from "@/lib/utils";
+
 type LegendProps = {
   variant?: "risk" | "blindspot" | "patrol" | "planner" | "coverageGap";
+  className?: string;
 };
 
-export function Legend({ variant = "risk" }: LegendProps) {
+export function Legend({ variant = "risk", className }: LegendProps) {
   const items = {
     patrol: [
       { label: "Patrol-connected", className: "bg-blue-600" },
@@ -47,7 +50,7 @@ export function Legend({ variant = "risk" }: LegendProps) {
     risk: "Risk priority",
   }[variant];
   return (
-    <div className="absolute bottom-3 left-3 rounded-md border border-slate-200 bg-white/95 p-3 text-xs shadow-lg backdrop-blur">
+    <div className={cn("absolute bottom-3 left-3 z-10 rounded-md border border-slate-200 bg-white/95 p-3 text-xs shadow-lg backdrop-blur", className)}>
       <div className="mb-2 font-medium text-slate-700">{title}</div>
       <div className="space-y-1">
         {items.map((item) => (

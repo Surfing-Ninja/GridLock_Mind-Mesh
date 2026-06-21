@@ -36,6 +36,7 @@ import {
   getPredictionWindows,
   getZoneDetails,
   getZonesGeoJson,
+  type GeoJsonFeatureCollection,
   type PredictionWindowRow,
   type RiskRow,
   type ZoneDetails,
@@ -96,6 +97,15 @@ function uniqueSorted(values: Array<string | null | undefined>) {
 function stationOptionsFrom(summary: unknown, rows: RiskRow[]) {
   const counts = asRecord(asRecord(summary).police_station_counts);
   return uniqueSorted([...Object.keys(counts), ...rows.map((row) => row.police_station)]);
+}
+
+function stationMatchShare(zones: GeoJsonFeatureCollection | undefined, station: string) {
+  const selected = station.trim().toLowerCase();
+  if (!selected || !zones?.features.length) return 0;
+  const matching = zones.features.filter(
+    (feature) => String(feature.properties?.police_station ?? "").trim().toLowerCase() === selected,
+  ).length;
+  return matching / zones.features.length;
 }
 
 function hourFromWindow(value?: string | null) {
@@ -519,10 +529,9 @@ export default function Page() {
     [audit.data?.raw_summary, combinedRows],
   );
   const stationScopeReady = useMemo(() => {
-    if (!selectedStation || !zones.data?.features.length) return false;
-    const selected = selectedStation.trim().toLowerCase();
-    return zones.data.features.every((feature) => String(feature.properties?.police_station ?? "").trim().toLowerCase() === selected);
-  }, [selectedStation, zones.data]);
+    if (!selectedStation || zones.isFetching || !zones.data?.features.length) return false;
+    return stationMatchShare(zones.data, selectedStation) >= 0.35;
+  }, [selectedStation, zones.data, zones.isFetching]);
   const alertRow = useMemo(
     () =>
       [...combinedRows].sort((left, right) => riskScore(right, mode) - riskScore(left, mode))[0],
@@ -551,10 +560,14 @@ export default function Page() {
         variant={mapVariant}
         selectedHour={selectedHour}
         selectedZoneId={selectedZoneId}
-        fitKey={stationScopeReady ? `home-station:${selectedStation}:${stationFocusNonce}` : null}
-        fitKeyOnly
+        fitKey={stationScopeReady ? `home-station:${selectedStation}:${stationFocusNonce}:${zones.dataUpdatedAt}` : null}
         fitOnDataLoad={false}
         resetViewKey={!selectedStation ? `default-bengaluru:${stationFocusNonce}` : null}
+        legendClassName={cn(
+          "bottom-auto top-[7.2rem] max-w-[220px] transition-all duration-300 ease-out",
+          leftOpen ? "left-[376px]" : "left-4",
+          rightOpen ? "right-auto" : "",
+        )}
         onZoneClick={(zoneId) => {
           setSelectedZoneId(zoneId);
           setRightOpen(true);
@@ -632,7 +645,6 @@ export default function Page() {
               onChange={(event) => {
                 setSelectedStation(event.target.value);
                 setSelectedZoneId(undefined);
-                setSelectedWindowIndex(null);
                 setStationFocusNonce((value) => value + 1);
               }}
               className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal normal-case text-slate-950 shadow-sm"
