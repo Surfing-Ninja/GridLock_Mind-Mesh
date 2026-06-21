@@ -1,7 +1,21 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CalendarDays, Clock, Compass, EyeOff, Flame, Info, MapPinned, Target, Truck, Video } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  Compass,
+  EyeOff,
+  Flame,
+  Info,
+  Lightbulb,
+  MapPinned,
+  Target,
+  Truck,
+  Video,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -62,6 +76,10 @@ function cleanLabel(value?: string | null) {
 
 function percent(value?: number | null) {
   return value === null || value === undefined ? "-" : `${(value * 100).toFixed(0)}%`;
+}
+
+function score(value?: number | null, digits = 1) {
+  return value === null || value === undefined || Number.isNaN(Number(value)) ? "-" : Number(value).toFixed(digits);
 }
 
 const dayOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -257,6 +275,125 @@ function SelectedActionsPanel({ rows, onSelect }: { rows: PlannerRecommendation[
   );
 }
 
+function modeInsight(mode: PlannerMode) {
+  if (mode === "conservative") return "Conservative mode is keeping the plan focused on proven hotspots.";
+  if (mode === "discovery") return "Discovery mode is pushing officers toward under-covered blindspot audits.";
+  return "Balanced mode is mixing proven hotspots with discovery audits.";
+}
+
+function PlannerInsights({
+  rows,
+  mode,
+  station,
+  windowStart,
+  officers,
+  towUnits,
+  selectedPreset,
+  loading,
+}: {
+  rows: PlannerRecommendation[];
+  mode: PlannerMode;
+  station: string;
+  windowStart: string;
+  officers: number;
+  towUnits: number;
+  selectedPreset?: DemoPreset | null;
+  loading?: boolean;
+}) {
+  const officersUsed = rows.reduce((sum, row) => sum + Number(row.officers_required ?? 0), 0);
+  const towUsed = rows.reduce((sum, row) => sum + Number(row.tow_units_required ?? 0), 0);
+  const blindspotCount = rows.filter((row) => row.action_category === "blindspot").length;
+  const hotspotCount = rows.length - blindspotCount;
+  const expectedRelief = rows.reduce((sum, row) => sum + Number(row.expected_relief ?? 0), 0);
+  const top = rows[0];
+  const topAction = top ? actionLabel(top.action) : "No action selected";
+  const stationText = station || "all stations";
+
+  const cards = rows.length
+    ? [
+        {
+          icon: CheckCircle2,
+          title: "Plan is actionable",
+          text: `${rows.length} zone-action recommendations are ready for ${stationText}. The first move is ${topAction} in zone ${
+            top?.zone_id ?? "-"
+          }.`,
+          tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+        },
+        {
+          icon: Target,
+          title: "Allocation mix",
+          text: `${hotspotCount} known hotspot allocation${hotspotCount === 1 ? "" : "s"} and ${blindspotCount} blindspot audit${
+            blindspotCount === 1 ? "" : "s"
+          }. ${modeInsight(mode)}`,
+          tone: "border-blue-200 bg-blue-50 text-blue-950",
+        },
+        {
+          icon: Truck,
+          title: "Resource pressure",
+          text: `The plan uses ${officersUsed}/${officers} officers and ${towUsed}/${towUnits} tow units, with expected risk coverage ${score(
+            expectedRelief,
+            1,
+          )}.`,
+          tone: officersUsed > officers || towUsed > towUnits ? "border-red-200 bg-red-50 text-red-950" : "border-slate-200 bg-white text-slate-700",
+        },
+      ]
+    : [
+        {
+          icon: Lightbulb,
+          title: loading ? "Planning in progress" : "Start with a preset or station",
+          text: loading
+            ? "CurbFlow is ranking zones against the selected resource constraints."
+            : "Pick a police station and run the planner, or use a demo card to load a complete scenario instantly.",
+          tone: "border-blue-200 bg-blue-50 text-blue-950",
+        },
+        {
+          icon: MapPinned,
+          title: "Map will refocus",
+          text: `Current scope is ${stationText}. When you run the planner, the map zooms to the matching station-window geometry.`,
+          tone: "border-slate-200 bg-white text-slate-700",
+        },
+        {
+          icon: AlertTriangle,
+          title: "Evidence caveat",
+          text: "Evening recommendations are audit priorities. They are not claims that evening congestion was directly measured.",
+          tone: "border-amber-200 bg-amber-50 text-amber-950",
+        },
+      ];
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-amber-600" />
+            Smart Planner Insights
+          </CardTitle>
+          <p className="mt-1 text-sm text-slate-600">
+            {selectedPreset
+              ? `${selectedPreset.label}: ${selectedPreset.selectionReason}`
+              : `Scope: ${stationText}${windowStart ? ` at ${windowStart}` : ""}.`}
+          </p>
+        </div>
+        <Badge variant={rows.length ? "success" : "secondary"}>{rows.length ? "Plan generated" : "Waiting for run"}</Badge>
+      </CardHeader>
+      <CardContent className="grid gap-3 lg:grid-cols-3">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div key={card.title} className={`rounded-xl border p-4 shadow-sm ${card.tone}`}>
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <Icon className="h-4 w-4" />
+                {card.title}
+              </div>
+              <p className="text-sm leading-6">{card.text}</p>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PlannerPage() {
   const [windowStart, setWindowStart] = useState("");
   const [station, setStation] = useState("");
@@ -272,6 +409,7 @@ export default function PlannerPage() {
   const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const [rows, setRows] = useState<PlannerRecommendation[]>([]);
   const [plannerMapFitNonce, setPlannerMapFitNonce] = useState(0);
+  const [selectedDemoId, setSelectedDemoId] = useState<string | undefined>();
 
   const audit = useQuery({ queryKey: ["planner-audit-summary"], queryFn: getAuditSummary });
   const hotspots = useQuery({
@@ -308,11 +446,18 @@ export default function PlannerPage() {
     [windowOptions, windowStart],
   );
 
+  const optionsReady = !hotspots.isLoading && !blindspots.isLoading;
+  const selectedDemo = demoPresets.find((preset) => preset.id === selectedDemoId) ?? null;
+
   useEffect(() => {
-    if (!windowStart && windowOptions.length) {
+    if (!optionsReady || !windowOptions.length) return;
+    if (!windowStart || !windowOptions.includes(windowStart)) {
       setWindowStart(windowOptions[0]);
+      setRows([]);
+      setSelectedZoneId(undefined);
+      setPlannerMapFitNonce((value) => value + 1);
     }
-  }, [windowOptions, windowStart]);
+  }, [optionsReady, setSelectedZoneId, windowOptions, windowStart]);
 
   useEffect(() => {
     if (!briefStation && stationOptions.length) {
@@ -333,11 +478,18 @@ export default function PlannerPage() {
 
   const planner = useMutation({
     mutationFn: getPlannerRecommendations,
-    onSuccess: setRows,
+    onSuccess: (nextRows) => {
+      setRows(nextRows);
+      const firstZone = nextRows[0]?.zone_id;
+      if (firstZone) {
+        setSelectedZoneId(firstZone);
+      }
+    },
   });
 
   function runPlanner(nextMode: PlannerMode = mode) {
     if (!windowStart) return;
+    setSelectedDemoId(undefined);
     setPlannerMapFitNonce((value) => value + 1);
     planner.mutate({
       window_start: windowStart,
@@ -357,6 +509,7 @@ export default function PlannerPage() {
   }
 
   function applyDemoPreset(preset: DemoPreset) {
+    setSelectedDemoId(preset.id);
     setStation(preset.policeStation);
     setWindowStart(preset.windowStart);
     setOfficers(preset.officers);
@@ -365,6 +518,14 @@ export default function PlannerPage() {
     setSelectedZoneId(preset.zoneId);
     setRows([]);
     setPlannerMapFitNonce((value) => value + 1);
+    planner.mutate({
+      window_start: preset.windowStart,
+      police_station: preset.policeStation || undefined,
+      available_officers: preset.officers,
+      available_tow_units: preset.towUnits,
+      mode: preset.mode,
+      top_k: 100,
+    });
   }
 
   function submitPlanner() {
@@ -477,12 +638,22 @@ export default function PlannerPage() {
         towUnits={towUnits}
         mode={mode}
         demoPresets={demoPresets}
+        activeDemoId={selectedDemoId}
         stationOptions={controlStationOptions}
         windowOptions={controlWindowOptions}
-        onWindowStartChange={setWindowStart}
-        onStationChange={(value) => {
-          setStation(value);
+        onWindowStartChange={(value) => {
+          setWindowStart(value);
           setRows([]);
+          setSelectedDemoId(undefined);
+          setSelectedZoneId(undefined);
+          setPlannerMapFitNonce((current) => current + 1);
+        }}
+        onStationChange={(value) => {
+          const nextWindows = windowOptionsFrom(optionRows, value);
+          setStation(value);
+          setWindowStart(nextWindows[0] ?? "");
+          setRows([]);
+          setSelectedDemoId(undefined);
           setSelectedZoneId(undefined);
           setPlannerMapFitNonce((current) => current + 1);
         }}
@@ -497,6 +668,17 @@ export default function PlannerPage() {
       {planner.error ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{planner.error.message}</div>
       ) : null}
+
+      <PlannerInsights
+        rows={rows}
+        mode={mode}
+        station={station}
+        windowStart={windowStart}
+        officers={officers}
+        towUnits={towUnits}
+        selectedPreset={selectedDemo}
+        loading={planner.isPending}
+      />
 
       <ResourceSummary rows={rows} />
 

@@ -1,7 +1,7 @@
 .PHONY: setup audit preprocess pfdi zones features graph train-deep train-ranker predict recommend precompute-summaries db api web full test ci clean
 
 setup:
-	python -m pip install -r requirements.txt -r requirements-ml.txt
+	python -m pip install -r ../requirements.txt
 
 audit:
 	python scripts/run_data_audit.py

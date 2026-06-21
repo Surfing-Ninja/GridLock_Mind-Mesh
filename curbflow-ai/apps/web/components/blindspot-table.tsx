@@ -13,6 +13,23 @@ function actionLabel(value?: string | null) {
     .trim();
 }
 
+function zoneCellExplainer(zoneId?: string | null) {
+  return `Area cell ${zoneId ?? "unknown"} is CurbFlow's internal 300 m grid zone for grouping nearby records on the map.`;
+}
+
+function blindspotInterpretation(row: RiskRow) {
+  const coverageGap = Number(row.coverage_gap ?? 0) * 100;
+  const auditRisk = Number(row.blindspot_risk_score ?? row.explore_score ?? 0);
+
+  if (coverageGap >= 70 && auditRisk >= 25) {
+    return "Plain-language read: this is a low-visibility audit candidate. It is not a proven hotspot, but sparse enforcement means zero challans should not be read as safe.";
+  }
+  if (coverageGap >= 50) {
+    return "Plain-language read: officers have limited visibility here, so CurbFlow recommends checking the area before treating it as low risk.";
+  }
+  return "Plain-language read: this area has some visibility risk, but it is below the strongest blindspot-audit tier.";
+}
+
 function auditLabel(score?: number | null) {
   const value = Number(score ?? 0);
   if (value >= 75) return { label: "Critical audit", className: "bg-red-700 text-white" };
@@ -55,6 +72,7 @@ export function BlindSpotTable({ rows = [], onSelect }: { rows?: RiskRow[]; onSe
                   {row.police_station ?? "Unknown station"}
                 </div>
                 <div className="mt-1 font-mono text-xs text-slate-500">{row.zone_id}</div>
+                <div className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{zoneCellExplainer(row.zone_id)}</div>
               </div>
               <ArrowRight className="mt-2 h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
             </div>
@@ -74,6 +92,10 @@ export function BlindSpotTable({ rows = [], onSelect }: { rows?: RiskRow[]; onSe
                 <div className="text-[11px] uppercase text-slate-500">Explore</div>
                 <div className="font-semibold text-slate-950">{formatNumber(row.explore_score, 1)}</div>
               </div>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-sm leading-6 text-slate-700">
+              {blindspotInterpretation(row)}
             </div>
 
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">

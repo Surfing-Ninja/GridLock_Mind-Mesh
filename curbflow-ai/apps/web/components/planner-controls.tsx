@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Wand2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, Moon, Play, Scale, Sun } from "lucide-react";
 import Link from "next/link";
 
 type PlannerControlsProps = {
@@ -17,6 +17,7 @@ type PlannerControlsProps = {
   towUnits: number;
   mode: PlannerMode;
   demoPresets?: DemoPreset[];
+  activeDemoId?: string;
   stationOptions?: string[];
   windowOptions?: string[];
   onWindowStartChange: (value: string) => void;
@@ -49,6 +50,7 @@ export function PlannerControls({
   towUnits,
   mode,
   demoPresets = [],
+  activeDemoId,
   stationOptions = [],
   windowOptions = [],
   onWindowStartChange,
@@ -60,10 +62,29 @@ export function PlannerControls({
   onSubmit,
   loading,
 }: PlannerControlsProps) {
-  const presetVariant = (id: string) => {
-    if (id === "morning_known_hotspot") return "danger" as const;
-    if (id === "evening_blindspot") return "purple" as const;
-    return "success" as const;
+  const presetMeta = (id: string) => {
+    if (id === "morning_known_hotspot") {
+      return {
+        icon: Sun,
+        label: "Observed hotspot",
+        className: "border-red-200 bg-red-50 text-red-950",
+        badge: "bg-red-700 text-white",
+      };
+    }
+    if (id === "evening_blindspot") {
+      return {
+        icon: Moon,
+        label: "Blindspot audit",
+        className: "border-blue-200 bg-blue-50 text-blue-950",
+        badge: "bg-blue-700 text-white",
+      };
+    }
+    return {
+      icon: Scale,
+      label: "Balanced resources",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      badge: "bg-emerald-700 text-white",
+    };
   };
 
   return (
@@ -130,18 +151,52 @@ export function PlannerControls({
             </Button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-3 lg:grid-cols-3">
           {demoPresets.map((preset) => (
-            <Button
+            <button
               key={preset.id}
               type="button"
-              variant={presetVariant(preset.id)}
-              className="gap-2"
+              className={`rounded-xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                presetMeta(preset.id).className
+              } ${activeDemoId === preset.id ? "ring-2 ring-slate-950/20" : ""}`}
               onClick={() => onDemoPreset(preset)}
             >
-              <Wand2 className="h-4 w-4" />
-              {preset.buttonLabel}
-            </Button>
+              {(() => {
+                const meta = presetMeta(preset.id);
+                const Icon = meta.icon;
+                return (
+                  <>
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-5 w-5" />
+                        <span className="text-sm font-semibold">{preset.label}</span>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase ${meta.badge}`}>
+                        {activeDemoId === preset.id ? "Loaded" : meta.label}
+                      </span>
+                    </div>
+                    <div className="text-lg font-semibold leading-snug">{preset.buttonLabel.replace("Load ", "")}</div>
+                    <p className="mt-2 min-h-12 text-sm leading-6 opacity-85">{preset.purpose}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-1">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        {preset.windowStart.replace("T", " ").slice(0, 16)}
+                      </span>
+                      <span className="rounded-full bg-white/75 px-2 py-1">{preset.officers} officers</span>
+                      <span className="rounded-full bg-white/75 px-2 py-1">{preset.towUnits} tow</span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-sm font-semibold">
+                      <span>{activeDemoId === preset.id ? "Planner loaded" : "Load and run plan"}</span>
+                      {activeDemoId === preset.id ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </button>
           ))}
         </div>
         {!windowOptions.length ? (

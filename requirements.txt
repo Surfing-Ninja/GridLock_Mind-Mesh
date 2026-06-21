@@ -1,4 +1,5 @@
 fastapi
+uvicorn[standard]
 pandas
 numpy
 pyarrow
@@ -6,6 +7,7 @@ duckdb
 scikit-learn
 lightgbm
 catboost
+xgboost
 joblib
 pyyaml
 pydantic
@@ -15,4 +17,6 @@ shapely
 networkx
 geopy
 pytest
-uvicorn[standard]
+torch
+tqdm
+einops

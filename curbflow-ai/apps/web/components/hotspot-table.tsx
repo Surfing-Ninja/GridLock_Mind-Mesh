@@ -13,6 +13,24 @@ function actionLabel(value?: string | null) {
     .trim();
 }
 
+function zoneCellExplainer(zoneId?: string | null) {
+  return `Area cell ${zoneId ?? "unknown"} is CurbFlow's internal 300 m grid zone for grouping nearby records on the map.`;
+}
+
+function hotspotInterpretation(row: RiskRow) {
+  const pfdi = Number(row.predicted_pfdi ?? 0);
+  const hotspot = Number(row.hotspot_probability ?? 0) * 100;
+  const priority = Number(row.deployment_priority ?? 0);
+
+  if (pfdi >= 75 && hotspot >= 75) {
+    return "Plain-language read: this is a proven enforcement hotspot, with repeated observed violations and a high parking-disruption proxy.";
+  }
+  if (priority >= 50) {
+    return "Plain-language read: this area has enough observed evidence to prioritize a patrol check, even if every metric is not at the maximum.";
+  }
+  return "Plain-language read: this area is worth watching, but it is below the strongest observed-hotspot tier.";
+}
+
 function priorityLabel(score?: number | null) {
   const value = Number(score ?? 0);
   if (value >= 75) return { label: "Critical", className: "bg-red-700 text-white" };
@@ -55,6 +73,7 @@ export function HotspotTable({ rows = [], onSelect }: { rows?: RiskRow[]; onSele
                   {row.police_station ?? "Unknown station"}
                 </div>
                 <div className="mt-1 font-mono text-xs text-slate-500">{row.zone_id}</div>
+                <div className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{zoneCellExplainer(row.zone_id)}</div>
               </div>
               <ArrowRight className="mt-2 h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-950" />
             </div>
@@ -74,6 +93,10 @@ export function HotspotTable({ rows = [], onSelect }: { rows?: RiskRow[]; onSele
                 <div className="text-[11px] uppercase text-slate-500">Priority</div>
                 <div className="font-semibold text-slate-950">{formatNumber(row.deployment_priority, 1)}</div>
               </div>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-red-100 bg-red-50/50 p-3 text-sm leading-6 text-slate-700">
+              {hotspotInterpretation(row)}
             </div>
 
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">

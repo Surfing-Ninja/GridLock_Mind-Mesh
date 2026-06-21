@@ -1727,7 +1727,6 @@ Add live patrol data, traffic speed/volume data, towing outcomes, road-cleared f
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-ml.txt
 ```
 
 ### Data

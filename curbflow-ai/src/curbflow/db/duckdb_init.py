@@ -20,6 +20,7 @@ from curbflow.zoning.zone_geojson import ZONES_GEOJSON_PATH
 
 
 APP_DB_PATH = Path("data/app/curbflow.duckdb")
+MODEL_BENCHMARK_METRICS_PATH = Path("artifacts/metrics/model_benchmark_metrics.json")
 
 EMPTY_SCHEMAS = {
     "hourly_audit": """
@@ -360,6 +361,7 @@ def _seed_model_metrics(con: duckdb.DuckDBPyConnection) -> None:
     for metric_source, path in (
         ("be_sthgt", DEEP_METRICS_PATH),
         ("lightgbm_ranker", RANKER_METRICS_PATH),
+        ("model_benchmark", MODEL_BENCHMARK_METRICS_PATH),
     ):
         artifact = Path(path)
         if artifact.exists():

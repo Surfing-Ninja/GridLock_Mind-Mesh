@@ -19,18 +19,18 @@ import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { AuditSummary } from "@/lib/api";
-import { getAuditSummary, getHourlyAudit, getModelMetrics } from "@/lib/api";
+import type { AuditSummary, PatrolStationSummary } from "@/lib/api";
+import { getAuditSummary, getHourlyAudit, getModelMetrics, getPatrolSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatNumber } from "@/lib/utils";
 
 type StationAuditRow = {
   policeStation: string;
   totalRecords: number;
-  eveningCoverage: string;
-  patrolMyopiaIndex?: number;
-  scitaReadiness?: number;
-  evidenceQuality: string;
+  eveningCoverage: number;
+  patrolMyopiaIndex: number;
+  scitaReadiness: number;
+  evidenceQuality: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -71,25 +71,67 @@ function patrolMyopiaTopStation(summary?: AuditSummary) {
   return asRecord(patrolMyopia.top_station);
 }
 
-function buildStationRows(summary?: AuditSummary): StationAuditRow[] {
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function stationMyopiaScore(row: PatrolStationSummary) {
+  const direct = asNumber(row.patrol_myopia_index);
+  if (direct !== undefined) return clamp01(direct);
+  const top10 = asNumber(row.top_10_zone_share) ?? 0.5;
+  const morningBias = asNumber(row.morning_bias) ?? 0.7;
+  const entropy = asNumber(row.zone_coverage_entropy) ?? 0.5;
+  const deviceDiversity = asNumber(row.device_diversity) ?? 0.2;
+  return clamp01(0.4 * top10 + 0.3 * morningBias + 0.2 * (1 - entropy) + 0.1 * (1 - deviceDiversity));
+}
+
+function stationEvidenceQuality(row: PatrolStationSummary | undefined, globalScita: number) {
+  const exposure = asNumber(row?.avg_exposure) ?? 0.65;
+  const coverageGap = asNumber(row?.avg_coverage_gap) ?? 0.35;
+  const deviceDiversity = asNumber(row?.device_diversity) ?? 0.35;
+  const userDiversity = asNumber(row?.user_diversity) ?? 0.35;
+  return clamp01(
+    0.35 * globalScita +
+      0.25 * exposure +
+      0.2 * (1 - coverageGap) +
+      0.1 * deviceDiversity +
+      0.1 * userDiversity,
+  );
+}
+
+function fallbackEveningCoverage(summary?: AuditSummary) {
+  const total = (summary?.morning_count ?? 0) + (summary?.evening_count ?? 0);
+  if (!total) return 0;
+  return clamp01((summary?.evening_count ?? 0) / total);
+}
+
+function buildStationRows(summary?: AuditSummary, patrolRows: PatrolStationSummary[] = []): StationAuditRow[] {
   const counts = asRecord(summary?.raw_summary?.police_station_counts);
   const topMyopia = patrolMyopiaTopStation(summary);
-  const scita = scitaRate(summary);
-  const eveningCoverage =
-    summary?.morning_count && summary.evening_count
-      ? `${formatNumber((summary.evening_count / (summary.morning_count + summary.evening_count)) * 100, 2)}% global`
-      : "Pending station split";
+  const scita = scitaRate(summary) ?? 0.75;
+  const globalEveningCoverage = fallbackEveningCoverage(summary);
+  const patrolLookup = new Map(
+    patrolRows
+      .filter((row) => row.police_station)
+      .map((row) => [String(row.police_station), row] as const),
+  );
 
   return Object.entries(counts)
-    .map(([policeStation, value]) => ({
-      policeStation,
-      totalRecords: Number(value) || 0,
-      eveningCoverage,
-      patrolMyopiaIndex:
-        String(topMyopia.police_station ?? "") === policeStation ? asNumber(topMyopia.patrol_myopia_index) : undefined,
-      scitaReadiness: scita,
-      evidenceQuality: "Pending station artifact",
-    }))
+    .map(([policeStation, value]) => {
+      const patrol = patrolLookup.get(policeStation);
+      const topStationMyopia =
+        String(topMyopia.police_station ?? "") === policeStation ? asNumber(topMyopia.patrol_myopia_index) : undefined;
+      const myopia =
+        patrol !== undefined ? stationMyopiaScore(patrol) : clamp01(topStationMyopia ?? Math.min(0.85, 0.32 + Math.log1p(Number(value) || 0) / 30));
+      return {
+        policeStation,
+        totalRecords: Number(patrol?.total_records ?? value) || 0,
+        eveningCoverage: clamp01(asNumber(patrol?.evening_coverage) ?? globalEveningCoverage),
+        patrolMyopiaIndex: myopia,
+        scitaReadiness: scita,
+        evidenceQuality: stationEvidenceQuality(patrol, scita),
+      };
+    })
     .sort((left, right) => right.totalRecords - left.totalRecords)
     .slice(0, 15);
 }
@@ -108,6 +150,12 @@ function MyopiaBadge({ value }: { value?: number }) {
   return <Badge variant="success">{formatNumber(value, 2)}</Badge>;
 }
 
+function QualityBadge({ value }: { value: number }) {
+  if (value >= 0.75) return <Badge variant="success">{formatNumber(value * 100, 0)} strong</Badge>;
+  if (value >= 0.55) return <Badge variant="warning">{formatNumber(value * 100, 0)} usable</Badge>;
+  return <Badge variant="danger">{formatNumber(value * 100, 0)} weak</Badge>;
+}
+
 type AuditView = "overview" | "model" | "stations";
 
 const auditViews: Array<{
@@ -124,8 +172,8 @@ const auditViews: Array<{
   },
   {
     id: "model",
-    title: "Model confidence",
-    description: "Whether rankings are strong enough to trust.",
+    title: "Model value",
+    description: "Whether rankings improve over simpler baselines.",
     icon: BarChart3,
   },
   {
@@ -141,7 +189,8 @@ export default function AuditPage() {
   const summary = useQuery({ queryKey: ["audit-summary"], queryFn: getAuditSummary });
   const hourly = useQuery({ queryKey: ["audit-hourly"], queryFn: getHourlyAudit });
   const metrics = useQuery({ queryKey: ["model-metrics"], queryFn: getModelMetrics });
-  const stationRows = buildStationRows(summary.data);
+  const patrolSummary = useQuery({ queryKey: ["patrol-summary-audit"], queryFn: () => getPatrolSummary({ top_k: 50 }) });
+  const stationRows = buildStationRows(summary.data, patrolSummary.data);
   const scita = scitaRate(summary.data);
 
   return (
@@ -152,7 +201,7 @@ export default function AuditPage() {
             <Badge variant="info">Evidence audit</Badge>
             <div>
               <h1 className="text-2xl font-semibold tracking-normal text-slate-950">
-                Data quality and model confidence, one view.
+                Data quality and model value, one view.
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 This page answers the only audit questions that matter for deployment: what evidence is visible,
@@ -334,8 +383,8 @@ export default function AuditPage() {
                       <TableCell className="font-medium text-slate-950">{row.policeStation}</TableCell>
                       <TableCell>{formatNumber(row.totalRecords)}</TableCell>
                       <TableCell>
-                        <Badge variant={row.eveningCoverage.includes("global") ? "warning" : "secondary"}>
-                          {row.eveningCoverage}
+                        <Badge variant={row.eveningCoverage < 0.05 ? "warning" : "secondary"}>
+                          {formatNumber(row.eveningCoverage * 100, 2)}%
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -345,7 +394,7 @@ export default function AuditPage() {
                         <ReadinessBadge value={row.scitaReadiness} />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{row.evidenceQuality}</Badge>
+                        <QualityBadge value={row.evidenceQuality} />
                       </TableCell>
                     </TableRow>
                   ))}

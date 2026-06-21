@@ -49,8 +49,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
-                active && "bg-slate-950 text-white shadow-sm hover:bg-slate-950 hover:text-white",
+                "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                active
+                  ? "bg-slate-950 text-white shadow-sm hover:bg-slate-950 hover:text-white"
+                  : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
               )}
             >
               <Icon className="h-4 w-4" />
