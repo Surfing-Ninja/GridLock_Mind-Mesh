@@ -10,6 +10,8 @@ CurbFlow AI does not confuse no challan with no problem.
 
 It uses police parking violation records to compute a Parking-Induced Flow Disruption Index (PFDI), identify high-impact enforcement zones, expose blind spots, and recommend station-wise enforcement plans under limited officer and towing resources.
 
+The GitHub-facing overview, Mermaid diagrams, and fresh-clone setup are maintained in the repository root [README.md](../README.md). This file stays focused on the `curbflow-ai/` monorepo commands and implementation contract.
+
 ## Theme
 
 ```text
@@ -170,6 +172,8 @@ Install Python dependencies:
 ```bash
 make setup
 ```
+
+`make setup` installs from the single root-level dependency file at `../requirements.txt`.
 
 Place the Theme 1 CSV at:
 
