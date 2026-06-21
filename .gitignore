@@ -67,6 +67,9 @@ artifacts/reports/*
 
 # Logs and temporary files
 *.log
+*.zip
+*.tar
+*.tar.gz
 logs/
 tmp/
 temp/
