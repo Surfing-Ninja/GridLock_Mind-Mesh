@@ -531,6 +531,7 @@ export default function Page() {
   const alertScore = riskScore(alertRow, mode);
   const selectedFallback = combinedRows.find((row) => row.zone_id === selectedZoneId) ?? alertRow;
   const phase = replayPhase(selectedHour);
+  const mapFocusActive = !leftOpen && !rightOpen;
   const alertInset = {
     left: leftOpen ? "376px" : "76px",
     right: rightOpen ? "408px" : "76px",
@@ -577,7 +578,7 @@ export default function Page() {
               {[
                 { href: "/audit", label: "Audit" },
                 { href: "/planner", label: "Planner" },
-                { href: "/metrics", label: "Metrics" },
+                { href: "/patrol-digital-twin", label: "Patrol twin" },
               ].map((item) => (
                 <Link
                   key={item.href}
@@ -686,12 +687,17 @@ export default function Page() {
                     variant="secondary"
                     className="bg-white text-slate-950 hover:bg-red-50"
                     onClick={() => {
+                      if (mapFocusActive) {
+                        setLeftOpen(true);
+                        setRightOpen(true);
+                        return;
+                      }
                       setLeftOpen(false);
                       setRightOpen(false);
                     }}
                   >
                     <Layers className="mr-2 h-4 w-4" />
-                    Map focus
+                    {mapFocusActive ? "Restore panels" : "Map focus"}
                   </Button>
                 </div>
               </div>

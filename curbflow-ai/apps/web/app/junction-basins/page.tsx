@@ -35,9 +35,10 @@ export default function JunctionBasinsPage() {
           className="sm:h-[620px]"
           label="Junction spillover layer"
         />
-        <BlindSpotTable rows={spillovers.data?.slice(0, 10)} onSelect={setSelectedZoneId} />
+        <div className="max-h-[620px] overflow-y-auto pr-1">
+          <BlindSpotTable rows={spillovers.data} onSelect={setSelectedZoneId} />
+        </div>
       </section>
-      <BlindSpotTable rows={spillovers.data} onSelect={setSelectedZoneId} />
     </div>
   );
 }

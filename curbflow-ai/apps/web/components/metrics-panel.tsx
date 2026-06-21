@@ -1,4 +1,4 @@
-import { AlertTriangle, BarChart3, EyeOff, Gauge, Info, Target } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, EyeOff, Gauge, Info, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -195,32 +195,36 @@ function ModelComparison({ rows }: { rows: ComparisonRow[] }) {
   );
 }
 
-function SummaryCards({ rows }: { rows: ComparisonRow[] }) {
+function SummaryCards({ rows, compact = false }: { rows: ComparisonRow[]; compact?: boolean }) {
   const ndcg = bestAvailable(rows, "ndcg_at_10");
   const precision = bestAvailable(rows, "precision_at_5");
   const mae = bestAvailable(rows, "mae_pfdi", true);
   return (
     <div className="grid gap-3 md:grid-cols-3">
-      <Card>
-        <CardContent className="space-y-1">
+      <Card className={compact ? "curbflow-audit-card overflow-hidden" : undefined}>
+        <CardContent className={compact ? "space-y-2 p-5" : "space-y-1"}>
           <div className="text-xs font-medium uppercase text-slate-500">Best NDCG@10</div>
-          <div className="text-xl font-semibold text-slate-950">{ndcg ? formatNumber(ndcg.value, 3) : "-"}</div>
+          <div className={compact ? "text-3xl font-semibold text-slate-950" : "text-xl font-semibold text-slate-950"}>
+            {ndcg ? formatNumber(ndcg.value, 3) : "-"}
+          </div>
           <div className="text-xs text-slate-500">{ndcg?.row.label ?? "Pending metrics"}</div>
         </CardContent>
       </Card>
-      <Card>
-        <CardContent className="space-y-1">
+      <Card className={compact ? "curbflow-audit-card overflow-hidden" : undefined}>
+        <CardContent className={compact ? "space-y-2 p-5" : "space-y-1"}>
           <div className="text-xs font-medium uppercase text-slate-500">Best Precision@5</div>
-          <div className="text-xl font-semibold text-slate-950">
+          <div className={compact ? "text-3xl font-semibold text-slate-950" : "text-xl font-semibold text-slate-950"}>
             {precision ? formatNumber(precision.value, 3) : "-"}
           </div>
           <div className="text-xs text-slate-500">{precision?.row.label ?? "Pending metrics"}</div>
         </CardContent>
       </Card>
-      <Card>
-        <CardContent className="space-y-1">
+      <Card className={compact ? "curbflow-audit-card overflow-hidden" : undefined}>
+        <CardContent className={compact ? "space-y-2 p-5" : "space-y-1"}>
           <div className="text-xs font-medium uppercase text-slate-500">Lowest MAE PFDI</div>
-          <div className="text-xl font-semibold text-slate-950">{mae ? formatNumber(mae.value, 2) : "-"}</div>
+          <div className={compact ? "text-3xl font-semibold text-slate-950" : "text-xl font-semibold text-slate-950"}>
+            {mae ? formatNumber(mae.value, 2) : "-"}
+          </div>
           <div className="text-xs text-slate-500">{mae?.row.label ?? "Pending metrics"}</div>
         </CardContent>
       </Card>
@@ -336,9 +340,97 @@ function RawMetricSources({ metrics }: { metrics: Record<string, unknown> }) {
   );
 }
 
-export function MetricsPanel({ metrics = {} }: { metrics?: Record<string, unknown> }) {
+function AuditModeMetrics({ rows, metrics }: { rows: ComparisonRow[]; metrics: Record<string, unknown> }) {
+  const hasMetrics = Object.keys(metrics).length > 0;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Model confidence
+            </div>
+            <h2 className="mt-3 text-xl font-semibold text-slate-950">Can the planner ranking be trusted?</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              This section keeps the technical metrics behind a plain-language readout. The model ranks where enforcement
+              should look next; it does not claim measured congestion or speed loss.
+            </p>
+          </div>
+          <Badge variant={hasMetrics ? "success" : "secondary"}>{hasMetrics ? "Metrics loaded" : "Pending metrics"}</Badge>
+        </div>
+        {!hasMetrics ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+            No model metrics are available yet. Run deep training, ranker training, prediction, and seed the DuckDB app database.
+          </div>
+        ) : (
+          <SummaryCards rows={rows} compact />
+        )}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Card className="curbflow-audit-card">
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <Target className="h-4 w-4 text-blue-700" />
+              Predicts
+            </div>
+            <p className="text-sm leading-6 text-slate-600">
+              Next-window zone priority, hotspot probability, predicted PFDI, count intensity, and blindspot audit priority.
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="curbflow-audit-card">
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <EyeOff className="h-4 w-4 text-blue-700" />
+              Handles sparse evidence
+            </div>
+            <p className="text-sm leading-6 text-slate-600">
+              Evening blindspot outputs are audit recommendations, not validated evening predictions.
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="curbflow-audit-card">
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <AlertTriangle className="h-4 w-4 text-amber-700" />
+              Does not claim
+            </div>
+            <p className="text-sm leading-6 text-slate-600">
+              PFDI is a proxy for parking-induced flow disruption, not measured speed loss or measured congestion.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold text-slate-950">
+          View detailed model comparison
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 group-open:bg-slate-950 group-open:text-white">
+            Optional
+          </span>
+        </summary>
+        <div className="border-t border-slate-100 p-4">
+          <ModelComparison rows={rows} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+export function MetricsPanel({
+  metrics = {},
+  mode = "full",
+}: {
+  metrics?: Record<string, unknown>;
+  mode?: "full" | "audit";
+}) {
   const rows = buildRows(metrics);
   const hasMetrics = Object.keys(metrics).length > 0;
+  if (mode === "audit") {
+    return <AuditModeMetrics rows={rows} metrics={metrics} />;
+  }
   return (
     <div className="space-y-4">
       {!hasMetrics ? (

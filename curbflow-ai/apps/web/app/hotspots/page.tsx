@@ -63,9 +63,10 @@ export default function HotspotsPage() {
             underrepresented in this dataset.
           </p>
         </div>
-        <HotspotTable rows={hotspots.data?.slice(0, 10)} onSelect={setSelectedZoneId} />
+        <div className="max-h-[620px] overflow-y-auto pr-1">
+          <HotspotTable rows={hotspots.data} onSelect={setSelectedZoneId} />
+        </div>
       </section>
-      <HotspotTable rows={hotspots.data} onSelect={setSelectedZoneId} />
       <ZoneDetailsDrawer zone={zoneDetails.data} onClose={() => setSelectedZoneId(undefined)} />
     </div>
   );

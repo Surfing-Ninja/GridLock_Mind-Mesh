@@ -31,6 +31,7 @@ type CurbFlowMapProps = {
   onZoneClick?: (zoneId: string) => void;
   selectedZoneId?: string;
   selectedHour?: number | null;
+  fitKey?: string | number | null;
   className?: string;
   label?: string;
 };
@@ -151,20 +152,22 @@ function plannerFillColor(): unknown[] {
     "case",
     ["!=", ["get", "planner_selected"], true],
     "rgb(148, 163, 184)",
+    ["==", ["get", "planner_action"], "beat_patrol"],
+    "rgb(37, 99, 235)",
     ["==", ["get", "planner_action"], "towing_support"],
     "rgb(185, 28, 28)",
+    ["==", ["get", "planner_action"], "mobile_camera_patrol"],
+    "rgb(2, 132, 199)",
+    ["==", ["get", "planner_action"], "repeat_offender_check"],
+    "rgb(234, 88, 12)",
+    ["==", ["get", "planner_action"], "temporary_cones"],
+    "rgb(202, 138, 4)",
     ["==", ["get", "planner_action"], "evening_audit_patrol"],
     "rgb(217, 119, 6)",
     ["==", ["get", "planner_action"], "patrol_expansion"],
     "rgb(13, 148, 136)",
     ["==", ["get", "planner_action"], "evidence_quality_audit"],
     "rgb(100, 116, 139)",
-    ["==", ["get", "planner_action"], "temporary_cones"],
-    "rgb(202, 138, 4)",
-    ["==", ["get", "planner_action"], "repeat_offender_check"],
-    "rgb(234, 88, 12)",
-    ["==", ["get", "planner_action"], "mobile_camera_patrol"],
-    "rgb(124, 58, 237)",
     "rgb(37, 99, 235)",
   ];
 }
@@ -411,8 +414,8 @@ function heatColorForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>):
   ];
 }
 
-function heatOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>): unknown[] {
-  if (variant === "planner") return ["interpolate", ["linear"], ["zoom"], 8, 0.66, 12, 0.62, 15, 0.52, 18, 0.42, 20, 0.34];
+function heatOpacityForVariant(variant: NonNullable<CurbFlowMapProps["variant"]>): unknown[] | number {
+  if (variant === "planner") return 0;
   return ["interpolate", ["linear"], ["zoom"], 8, 0.9, 12, 0.86, 15, 0.74, 17, 0.6, 19, 0.5, 20, 0.42];
 }
 
@@ -798,6 +801,7 @@ export function CurbFlowMap({
   onZoneClick,
   selectedZoneId,
   selectedHour,
+  fitKey,
   className,
   label,
 }: CurbFlowMapProps) {
@@ -807,6 +811,7 @@ export function CurbFlowMap({
   const hoveredZoneIdRef = useRef<string | number | null>(null);
   const selectedZoneIdRef = useRef<string | null>(null);
   const hasFitBoundsRef = useRef(false);
+  const lastFitKeyRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [tooltip, setTooltip] = useState<MapTooltip | null>(null);
   const featureCount = zones?.features.length ?? 0;
@@ -1076,11 +1081,29 @@ export function CurbFlowMap({
     labelSource.setData(stationLabelFeatureCollection(data, variant, mode));
 
     const bounds = collectBounds(data);
-    if (bounds && !hasFitBoundsRef.current) {
-      map.fitBounds(bounds, { padding: 32, maxZoom: 13.5, duration: 700 });
+    const normalizedFitKey = fitKey === null || fitKey === undefined ? null : String(fitKey);
+    const firstZoneId = String(data.features[0]?.properties?.zone_id ?? data.features[0]?.properties?.id ?? "");
+    const lastZoneId = String(
+      data.features[data.features.length - 1]?.properties?.zone_id ??
+        data.features[data.features.length - 1]?.properties?.id ??
+        "",
+    );
+    const fitIdentity =
+      normalizedFitKey === null ? null : `${normalizedFitKey}:${data.features.length}:${firstZoneId}:${lastZoneId}`;
+    const shouldRefitForKey = fitIdentity !== null && lastFitKeyRef.current !== fitIdentity;
+    const shouldInitialFit = normalizedFitKey === null && !hasFitBoundsRef.current;
+    if (bounds && (shouldInitialFit || shouldRefitForKey)) {
+      map.fitBounds(bounds, {
+        padding: data.features.length <= 80 ? 72 : 42,
+        maxZoom: data.features.length <= 80 ? 15.1 : 13.7,
+        duration: shouldRefitForKey ? 900 : 700,
+      });
       hasFitBoundsRef.current = true;
+      if (fitIdentity !== null) {
+        lastFitKeyRef.current = fitIdentity;
+      }
     }
-  }, [mapReady, mode, selectedHour, variant, zones]);
+  }, [fitKey, mapReady, mode, selectedHour, variant, zones]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;

@@ -10,14 +10,14 @@ import { cn } from "@/lib/utils";
 
 const titles: Record<string, string> = {
   "/": "Command Center",
-  "/audit": "Bias Audit",
+  "/audit": "Evidence Audit",
   "/hotspots": "Observed Hotspots",
   "/blindspots": "Blindspots",
   "/junction-basins": "Junction Basins",
   "/patrol-twin": "Patrol Digital Twin",
   "/patrol-digital-twin": "Patrol Digital Twin",
   "/planner": "Enforcement Planner",
-  "/metrics": "Model Metrics",
+  "/metrics": "Evidence Audit",
 };
 
 const mobileLinks = [
@@ -27,7 +27,6 @@ const mobileLinks = [
   { href: "/blindspots", label: "Blindspots" },
   { href: "/patrol-twin", label: "Patrol Twin" },
   { href: "/planner", label: "Planner" },
-  { href: "/metrics", label: "Metrics" },
 ];
 
 export function Header() {

@@ -104,3 +104,17 @@ input {
 .curbflow-tour-card {
   animation: curbflow-card-rise 180ms ease-out;
 }
+
+.curbflow-audit-card {
+  animation: curbflow-card-rise 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .curbflow-alert-sweep::after,
+  .curbflow-live-dot::after,
+  .curbflow-tour-spotlight,
+  .curbflow-tour-card,
+  .curbflow-audit-card {
+    animation: none;
+  }
+}

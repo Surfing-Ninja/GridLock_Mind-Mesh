@@ -13,8 +13,12 @@ export function Legend({ variant = "risk" }: LegendProps) {
     planner: [
       { label: "Beat patrol", className: "bg-blue-600" },
       { label: "Towing support", className: "bg-red-700" },
+      { label: "Mobile camera", className: "bg-sky-600" },
+      { label: "Repeat offender", className: "bg-orange-600" },
+      { label: "Temporary cones", className: "bg-yellow-600" },
       { label: "Evening audit", className: "bg-amber-600" },
       { label: "Patrol expansion", className: "bg-teal-600" },
+      { label: "Evidence audit", className: "bg-slate-500" },
     ],
     blindspot: [
       { label: "Low audit risk", className: "bg-slate-400" },

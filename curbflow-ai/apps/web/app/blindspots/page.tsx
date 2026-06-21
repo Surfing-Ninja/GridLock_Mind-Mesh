@@ -175,9 +175,10 @@ export default function BlindspotsPage() {
           onZoneClick={setSelectedZoneId}
           className="sm:h-[620px]"
         />
-        <BlindSpotTable rows={blindspots.data?.slice(0, 10)} onSelect={setSelectedZoneId} />
+        <div className="max-h-[620px] overflow-y-auto pr-1">
+          <BlindSpotTable rows={blindspots.data} onSelect={setSelectedZoneId} />
+        </div>
       </section>
-      <BlindSpotTable rows={blindspots.data} onSelect={setSelectedZoneId} />
       <ZoneDetailsDrawer zone={zoneDetails.data} onClose={() => setSelectedZoneId(undefined)} />
     </div>
   );

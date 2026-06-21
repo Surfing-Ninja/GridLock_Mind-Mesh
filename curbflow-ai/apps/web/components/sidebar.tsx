@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  BarChart3,
   EyeOff,
   Gauge,
   GitBranch,
@@ -18,13 +17,12 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/", label: "Hotspot Map", icon: LayoutDashboard },
-  { href: "/audit", label: "Audit", icon: Activity },
+  { href: "/audit", label: "Evidence Audit", icon: Activity },
   { href: "/hotspots", label: "Hotspots", icon: Siren },
   { href: "/blindspots", label: "Evening Blindspots", icon: EyeOff },
   { href: "/junction-basins", label: "Junction Basins", icon: GitBranch },
   { href: "/patrol-twin", label: "Patrol Twin", icon: Route },
   { href: "/planner", label: "Planner", icon: MapPinned },
-  { href: "/metrics", label: "Metrics", icon: BarChart3 },
 ];
 
 export function Sidebar() {

@@ -271,6 +271,7 @@ export default function PlannerPage() {
   const selectedZoneId = useCurbFlowStore((state) => state.selectedZoneId);
   const setSelectedZoneId = useCurbFlowStore((state) => state.setSelectedZoneId);
   const [rows, setRows] = useState<PlannerRecommendation[]>([]);
+  const [plannerMapFitNonce, setPlannerMapFitNonce] = useState(0);
 
   const audit = useQuery({ queryKey: ["planner-audit-summary"], queryFn: getAuditSummary });
   const hotspots = useQuery({
@@ -337,6 +338,7 @@ export default function PlannerPage() {
 
   function runPlanner(nextMode: PlannerMode = mode) {
     if (!windowStart) return;
+    setPlannerMapFitNonce((value) => value + 1);
     planner.mutate({
       window_start: windowStart,
       police_station: station || undefined,
@@ -362,6 +364,7 @@ export default function PlannerPage() {
     setMode(preset.mode);
     setSelectedZoneId(preset.zoneId);
     setRows([]);
+    setPlannerMapFitNonce((value) => value + 1);
   }
 
   function submitPlanner() {
@@ -477,7 +480,12 @@ export default function PlannerPage() {
         stationOptions={controlStationOptions}
         windowOptions={controlWindowOptions}
         onWindowStartChange={setWindowStart}
-        onStationChange={setStation}
+        onStationChange={(value) => {
+          setStation(value);
+          setRows([]);
+          setSelectedZoneId(undefined);
+          setPlannerMapFitNonce((current) => current + 1);
+        }}
         onOfficersChange={setOfficers}
         onTowUnitsChange={setTowUnits}
         onModeChange={changeMode}
@@ -499,6 +507,7 @@ export default function PlannerPage() {
           variant="planner"
           selectedZoneId={selectedZoneId}
           onZoneClick={setSelectedZoneId}
+          fitKey={`planner:${station || "all"}:${windowStart || "none"}:${mode}:${plannerMapFitNonce}`}
         />
         <SelectedActionsPanel rows={rows} onSelect={setSelectedZoneId} />
       </section>
