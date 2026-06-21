@@ -457,6 +457,7 @@ export default function Page() {
   const mode = useCurbFlowStore((state) => state.plannerMode);
   const setMode = useCurbFlowStore((state) => state.setPlannerMode);
   const [selectedStation, setSelectedStation] = useState("");
+  const [stationFocusNonce, setStationFocusNonce] = useState(0);
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [replaySpeedMs, setReplaySpeedMs] = useState(1400);
@@ -517,6 +518,11 @@ export default function Page() {
     () => stationOptionsFrom(audit.data?.raw_summary, combinedRows),
     [audit.data?.raw_summary, combinedRows],
   );
+  const stationScopeReady = useMemo(() => {
+    if (!selectedStation || !zones.data?.features.length) return false;
+    const selected = selectedStation.trim().toLowerCase();
+    return zones.data.features.every((feature) => String(feature.properties?.police_station ?? "").trim().toLowerCase() === selected);
+  }, [selectedStation, zones.data]);
   const alertRow = useMemo(
     () =>
       [...combinedRows].sort((left, right) => riskScore(right, mode) - riskScore(left, mode))[0],
@@ -545,12 +551,22 @@ export default function Page() {
         variant={mapVariant}
         selectedHour={selectedHour}
         selectedZoneId={selectedZoneId}
+        fitKey={stationScopeReady ? `home-station:${selectedStation}:${stationFocusNonce}` : null}
+        fitKeyOnly
+        fitOnDataLoad={false}
+        resetViewKey={!selectedStation ? `default-bengaluru:${stationFocusNonce}` : null}
         onZoneClick={(zoneId) => {
           setSelectedZoneId(zoneId);
           setRightOpen(true);
         }}
         className="!h-screen !min-h-screen rounded-none border-0 shadow-none"
-        label={mapVariant === "blindspot" ? "Evening audit layer" : "Live priority layer"}
+        label={
+          selectedStation
+            ? `${selectedStation} focus layer`
+            : mapVariant === "blindspot"
+              ? "Evening audit layer"
+              : "Live priority layer"
+        }
       />
 
       <aside
@@ -610,22 +626,27 @@ export default function Page() {
           </div>
 
           <label className="mb-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Station
+            Place / police station
             <select
               value={selectedStation}
               onChange={(event) => {
                 setSelectedStation(event.target.value);
+                setSelectedZoneId(undefined);
                 setSelectedWindowIndex(null);
+                setStationFocusNonce((value) => value + 1);
               }}
               className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal normal-case text-slate-950 shadow-sm"
             >
-              <option value="">All stations</option>
+              <option value="">Default Bengaluru map</option>
               {stationOptions.map((station) => (
                 <option key={station} value={station}>
                   {station}
                 </option>
               ))}
             </select>
+            <span className="mt-2 block text-[11px] font-normal normal-case leading-5 text-slate-500">
+              Select a station to zoom into that operating area. Leave it on default for the full Bengaluru command view.
+            </span>
           </label>
 
           <CommandQueue

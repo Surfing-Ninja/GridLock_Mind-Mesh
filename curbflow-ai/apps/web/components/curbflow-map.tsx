@@ -23,6 +23,8 @@ const TOOLTIP_WIDTH = 280;
 const TOOLTIP_HEIGHT = 370;
 const TOOLTIP_OFFSET = 16;
 const TOOLTIP_EDGE_PADDING = 12;
+const BENGALURU_CENTER: [number, number] = [77.5946, 12.9716];
+const BENGALURU_ZOOM = 11;
 
 type CurbFlowMapProps = {
   zones?: GeoJsonFeatureCollection;
@@ -32,6 +34,11 @@ type CurbFlowMapProps = {
   selectedZoneId?: string;
   selectedHour?: number | null;
   fitKey?: string | number | null;
+  fitKeyOnly?: boolean;
+  fitOnDataLoad?: boolean;
+  resetViewKey?: string | number | null;
+  defaultCenter?: [number, number];
+  defaultZoom?: number;
   className?: string;
   label?: string;
 };
@@ -802,6 +809,11 @@ export function CurbFlowMap({
   selectedZoneId,
   selectedHour,
   fitKey,
+  fitKeyOnly = false,
+  fitOnDataLoad = true,
+  resetViewKey,
+  defaultCenter = BENGALURU_CENTER,
+  defaultZoom = BENGALURU_ZOOM,
   className,
   label,
 }: CurbFlowMapProps) {
@@ -812,6 +824,7 @@ export function CurbFlowMap({
   const selectedZoneIdRef = useRef<string | null>(null);
   const hasFitBoundsRef = useRef(false);
   const lastFitKeyRef = useRef<string | null>(null);
+  const lastResetViewKeyRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [tooltip, setTooltip] = useState<MapTooltip | null>(null);
   const featureCount = zones?.features.length ?? 0;
@@ -825,8 +838,8 @@ export function CurbFlowMap({
     const map = new maplibregl.Map({
       container: mapRef.current,
       style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-      center: [77.5946, 12.9716],
-      zoom: 11,
+      center: defaultCenter,
+      zoom: defaultZoom,
       attributionControl: false,
     });
     mapInstanceRef.current = map;
@@ -1088,10 +1101,13 @@ export function CurbFlowMap({
         data.features[data.features.length - 1]?.properties?.id ??
         "",
     );
-    const fitIdentity =
-      normalizedFitKey === null ? null : `${normalizedFitKey}:${data.features.length}:${firstZoneId}:${lastZoneId}`;
+    const fitIdentity = normalizedFitKey === null
+      ? null
+      : fitKeyOnly
+        ? normalizedFitKey
+        : `${normalizedFitKey}:${data.features.length}:${firstZoneId}:${lastZoneId}`;
     const shouldRefitForKey = fitIdentity !== null && lastFitKeyRef.current !== fitIdentity;
-    const shouldInitialFit = normalizedFitKey === null && !hasFitBoundsRef.current;
+    const shouldInitialFit = fitOnDataLoad && normalizedFitKey === null && !hasFitBoundsRef.current;
     if (bounds && (shouldInitialFit || shouldRefitForKey)) {
       map.fitBounds(bounds, {
         padding: data.features.length <= 80 ? 72 : 42,
@@ -1103,7 +1119,25 @@ export function CurbFlowMap({
         lastFitKeyRef.current = fitIdentity;
       }
     }
-  }, [fitKey, mapReady, mode, selectedHour, variant, zones]);
+  }, [fitKey, fitKeyOnly, fitOnDataLoad, mapReady, mode, selectedHour, variant, zones]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady || resetViewKey === null || resetViewKey === undefined) return;
+    const normalizedResetKey = String(resetViewKey);
+    if (lastResetViewKeyRef.current === normalizedResetKey) return;
+    lastResetViewKeyRef.current = normalizedResetKey;
+    lastFitKeyRef.current = null;
+    hasFitBoundsRef.current = false;
+    map.easeTo({
+      center: defaultCenter,
+      zoom: defaultZoom,
+      pitch: 0,
+      bearing: 0,
+      duration: 850,
+      essential: true,
+    });
+  }, [defaultCenter, defaultZoom, mapReady, resetViewKey]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
