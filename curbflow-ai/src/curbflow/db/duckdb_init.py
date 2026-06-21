@@ -12,14 +12,14 @@ from curbflow.data.audit import COVERAGE_AUDIT_PATH, EDA_SUMMARY_PATH
 from curbflow.features.aggregate_zone_time import ZONE_TIME_FEATURES_PATH
 from curbflow.features.novel_features import JUNCTION_BASINS_PATH, PATROL_MYOPIA_PATH
 from curbflow.graph.build_patrol_graph import PATROL_GRAPH_EDGES_PATH, PATROL_GRAPH_FEATURES_PATH
-from curbflow.ml.be_sthgt.trainer import DEEP_METRICS_PATH
-from curbflow.ml.ranker.ensemble import PREDICTIONS_PATH
-from curbflow.ml.ranker.lgbm_ranker import RANKER_METRICS_PATH
-from curbflow.planner.optimizer import RECOMMENDATIONS_PATH
 from curbflow.zoning.zone_geojson import ZONES_GEOJSON_PATH
 
 
 APP_DB_PATH = Path("data/app/curbflow.duckdb")
+PREDICTIONS_PATH = Path("data/processed/predictions.parquet")
+RECOMMENDATIONS_PATH = Path("data/processed/recommendations.parquet")
+DEEP_METRICS_PATH = Path("artifacts/metrics/deep_metrics.json")
+RANKER_METRICS_PATH = Path("artifacts/metrics/ranker_metrics.json")
 MODEL_BENCHMARK_METRICS_PATH = Path("artifacts/metrics/model_benchmark_metrics.json")
 
 EMPTY_SCHEMAS = {

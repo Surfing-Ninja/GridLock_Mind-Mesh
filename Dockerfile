@@ -15,9 +15,21 @@ RUN apt-get update \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir \
+        fastapi \
+        "uvicorn[standard]" \
+        pandas \
+        numpy \
+        pyarrow \
+        duckdb \
+        pyyaml \
+        pydantic \
+        pydantic-settings \
+        python-dotenv \
+        shapely \
+        networkx \
+        geopy
 
 COPY curbflow-ai/apps/web/package.json curbflow-ai/apps/web/package-lock.json ./curbflow-ai/apps/web/
 RUN cd curbflow-ai/apps/web && npm ci

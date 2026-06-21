@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from curbflow.features.training_table import MODEL_TRAINING_TABLE_PATH
-from curbflow.ml.ranker.ensemble import PREDICTIONS_PATH
 from curbflow.planner.action_rules import build_action_candidates
 from curbflow.planner.explanations import (
     build_recommendation_explanation,
@@ -22,6 +21,7 @@ from curbflow.planner.priority_score import (
 
 
 RECOMMENDATIONS_PATH = Path("data/processed/recommendations.parquet")
+PREDICTIONS_PATH = Path("data/processed/predictions.parquet")
 
 RECOMMENDATION_COLUMNS = [
     "recommendation_rank",
