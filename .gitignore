@@ -76,3 +76,24 @@ temp/
 !artifacts/**/.gitkeep
 !**/data/**/.gitkeep
 !**/artifacts/**/.gitkeep
+
+# Hosted demo runtime artifacts. These are aggregate/model outputs, not raw CSV.
+!curbflow-ai/artifacts/metrics/deep_metrics.json
+!curbflow-ai/artifacts/metrics/feature_importance.csv
+!curbflow-ai/artifacts/metrics/model_card.md
+!curbflow-ai/artifacts/metrics/ranker_metrics.json
+!curbflow-ai/artifacts/models/be_sthgt_model.pt
+!curbflow-ai/artifacts/models/model_metadata.json
+!curbflow-ai/artifacts/models/ranker_lgbm.txt
+!curbflow-ai/artifacts/models/scaler.pkl
+!curbflow-ai/artifacts/reports/eda_summary.json
+!curbflow-ai/data/interim/patrol_graph_edges.parquet
+!curbflow-ai/data/processed/coverage_audit.parquet
+!curbflow-ai/data/processed/demo_presets.json
+!curbflow-ai/data/processed/junction_basins.parquet
+!curbflow-ai/data/processed/patrol_graph_features.parquet
+!curbflow-ai/data/processed/patrol_myopia.parquet
+!curbflow-ai/data/processed/predictions.parquet
+!curbflow-ai/data/processed/recommendations.parquet
+!curbflow-ai/data/processed/zone_time_features.parquet
+!curbflow-ai/data/processed/zones.geojson
