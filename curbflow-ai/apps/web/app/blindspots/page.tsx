@@ -65,7 +65,7 @@ function EvidenceGapSection() {
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="h-72 rounded-lg border border-slate-200 bg-white p-3">
+        <div data-tour="blindspots-hourly-chart" className="h-72 rounded-lg border border-slate-200 bg-white p-3">
           {mounted ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourlyRows}>

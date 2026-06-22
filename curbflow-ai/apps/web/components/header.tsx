@@ -51,7 +51,7 @@ const TOUR_MARGIN = 16;
 const TOUR_GAP = 18;
 const TOUR_CARD_MAX_WIDTH = 460;
 const TOUR_CARD_MIN_WIDTH = 300;
-const TOUR_CARD_ESTIMATED_HEIGHT = 350;
+const TOUR_CARD_ESTIMATED_HEIGHT = 430;
 
 const fallbackTourSteps: TourStep[] = [
   {
@@ -103,7 +103,7 @@ const tours: Record<string, TourStep[]> = {
         "SCITA readiness indicates evidence capture reliability.",
         "Top-zone concentration shows whether enforcement is too focused.",
       ],
-      placement: "top",
+      placement: "right",
     },
     {
       selector: "[data-tour='audit-tab-model']",
@@ -172,10 +172,11 @@ const tours: Record<string, TourStep[]> = {
       ],
     },
     {
-      selector: "[data-tour='blindspots-evidence-gap']",
+      selector: "[data-tour='blindspots-hourly-chart']",
       eyebrow: "Evening gap",
       title: "This chart is why evening zeroes are not treated as safe.",
       body: "The hourly volume and last-active station bars show enforcement fading later in the day. The model therefore recommends audit patrols rather than claiming evening predictions are validated.",
+      placement: "right",
     },
     {
       selector: "[data-tour='blindspots-map']",
@@ -327,61 +328,74 @@ function getSpotlightRect(selector: string): TourRect | null {
 function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"]): CSSProperties {
   const viewport = viewportSize();
   const maxWidth = Math.max(TOUR_CARD_MIN_WIDTH, viewport.width - TOUR_MARGIN * 2);
-  const cardWidth = Math.min(TOUR_CARD_MAX_WIDTH, maxWidth);
+  const defaultWidth = Math.min(TOUR_CARD_MAX_WIDTH, maxWidth);
   const cardHeight = Math.min(TOUR_CARD_ESTIMATED_HEIGHT, viewport.height - TOUR_MARGIN * 2);
-  const base: CSSProperties = {
+  const base = (width = defaultWidth): CSSProperties => ({
     position: "fixed",
-    width: cardWidth,
+    width,
     maxWidth: "calc(100vw - 2rem)",
     maxHeight: "calc(100vh - 2rem)",
     overflowY: "auto",
-  };
+  });
 
   if (!rect) {
     return {
-      ...base,
-      left: clamp((viewport.width - cardWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - cardWidth - TOUR_MARGIN)),
+      ...base(),
+      left: clamp((viewport.width - defaultWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - defaultWidth - TOUR_MARGIN)),
       top: clamp((viewport.height - cardHeight) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN)),
     };
   }
 
   const centeredLeft = clamp(
-    rect.left + rect.width / 2 - cardWidth / 2,
+    rect.left + rect.width / 2 - defaultWidth / 2,
     TOUR_MARGIN,
-    Math.max(TOUR_MARGIN, viewport.width - cardWidth - TOUR_MARGIN),
+    Math.max(TOUR_MARGIN, viewport.width - defaultWidth - TOUR_MARGIN),
   );
-  const sideTop = clamp(rect.top, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN));
+  const sideTop = clamp(
+    rect.top + rect.height / 2 - cardHeight / 2,
+    TOUR_MARGIN,
+    Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN),
+  );
+  const rightSpace = viewport.width - rect.left - rect.width - TOUR_GAP - TOUR_MARGIN;
+  const leftSpace = rect.left - TOUR_GAP - TOUR_MARGIN;
+  const rightWidth = Math.min(defaultWidth, Math.max(0, rightSpace));
+  const leftWidth = Math.min(defaultWidth, Math.max(0, leftSpace));
   const options: Record<NonNullable<TourStep["placement"]>, CSSProperties | null> = {
     bottom:
       rect.top + rect.height + TOUR_GAP + cardHeight <= viewport.height - TOUR_MARGIN
-        ? { ...base, left: centeredLeft, top: rect.top + rect.height + TOUR_GAP }
+        ? { ...base(), left: centeredLeft, top: rect.top + rect.height + TOUR_GAP }
         : null,
     top:
       rect.top - TOUR_GAP - cardHeight >= TOUR_MARGIN
-        ? { ...base, left: centeredLeft, top: rect.top - TOUR_GAP - cardHeight }
+        ? { ...base(), left: centeredLeft, top: rect.top - TOUR_GAP - cardHeight }
         : null,
     right:
-      rect.left + rect.width + TOUR_GAP + cardWidth <= viewport.width - TOUR_MARGIN
-        ? { ...base, left: rect.left + rect.width + TOUR_GAP, top: sideTop }
+      rightWidth >= TOUR_CARD_MIN_WIDTH
+        ? { ...base(rightWidth), left: rect.left + rect.width + TOUR_GAP, top: sideTop }
         : null,
     left:
-      rect.left - TOUR_GAP - cardWidth >= TOUR_MARGIN
-        ? { ...base, left: rect.left - TOUR_GAP - cardWidth, top: sideTop }
+      leftWidth >= TOUR_CARD_MIN_WIDTH
+        ? { ...base(leftWidth), left: rect.left - TOUR_GAP - leftWidth, top: sideTop }
         : null,
   };
 
-  const order: Array<NonNullable<TourStep["placement"]>> =
-    placement === "left" || placement === "right" || placement === "top" || placement === "bottom"
-      ? [placement, "bottom", "right", "left", "top"]
-      : ["bottom", "right", "left", "top"];
+  const orderByPlacement: Record<NonNullable<TourStep["placement"]>, Array<NonNullable<TourStep["placement"]>>> = {
+    bottom: ["bottom", "right", "left", "top"],
+    top: ["top", "right", "left", "bottom"],
+    right: ["right", "left", "bottom", "top"],
+    left: ["left", "right", "bottom", "top"],
+  };
+  const order: Array<NonNullable<TourStep["placement"]>> = placement
+    ? orderByPlacement[placement]
+    : ["right", "left", "bottom", "top"];
   for (const direction of order) {
     if (options[direction]) return options[direction] as CSSProperties;
   }
 
   return {
-    ...base,
-    left: clamp((viewport.width - cardWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - cardWidth - TOUR_MARGIN)),
-    top: rect.top > viewport.height / 2 ? TOUR_MARGIN : Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN),
+    ...base(),
+    left: clamp((viewport.width - defaultWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - defaultWidth - TOUR_MARGIN)),
+    top: clamp((viewport.height - cardHeight) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN)),
   };
 }
 
