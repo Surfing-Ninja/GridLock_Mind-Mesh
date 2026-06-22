@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { CurbFlowMap } from "@/components/curbflow-map";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,14 @@ import { type PlannerMode, useCurbFlowStore } from "@/lib/store";
 import { cn, formatDateTime, formatNumber } from "@/lib/utils";
 
 type RiskLevel = "critical" | "high" | "elevated" | "clear";
+type SpotlightBox = {
+  left: string;
+  right: string;
+  top: string;
+  bottom: string;
+  width: string;
+  height: string;
+};
 
 const tourSteps = [
   {
@@ -120,6 +129,30 @@ function hasPlaceCoordinates(place: PlaceSuggestion) {
     Number.isFinite(Number(place.latitude)) &&
     Number.isFinite(Number(place.longitude))
   );
+}
+
+function cssValue(value: CSSProperties[keyof CSSProperties] | undefined, fallback = "0px") {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "number") return `${value}px`;
+  return String(value);
+}
+
+function spotlightBox(style: CSSProperties): SpotlightBox {
+  const leftValue = cssValue(style.left, "");
+  const rightValue = cssValue(style.right, "");
+  const topValue = cssValue(style.top, "");
+  const bottomValue = cssValue(style.bottom, "");
+  const widthValue = cssValue(style.width, "");
+  const heightValue = cssValue(style.height, "");
+
+  const left = leftValue || (rightValue && widthValue ? `calc(100vw - ${rightValue} - ${widthValue})` : "0px");
+  const right = rightValue || (leftValue && widthValue ? `calc(100vw - ${leftValue} - ${widthValue})` : "0px");
+  const top = topValue || (bottomValue && heightValue ? `calc(100vh - ${bottomValue} - ${heightValue})` : "0px");
+  const bottom = bottomValue || (topValue && heightValue ? `calc(100vh - ${topValue} - ${heightValue})` : "0px");
+  const width = widthValue || `calc(100vw - ${left} - ${right})`;
+  const height = heightValue || `calc(100vh - ${top} - ${bottom})`;
+
+  return { left, right, top, bottom, width, height };
 }
 
 function matchingStationForPlace(place: PlaceSuggestion, stations: string[]) {
@@ -427,6 +460,8 @@ function ZoneBrief({
 function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step: number) => void; onClose: () => void }) {
   const current = tourSteps[step];
   const compactTour = typeof window !== "undefined" && (window.innerWidth < 1180 || window.innerHeight < 720);
+  const box = spotlightBox(current.spotlight);
+  const backdropClass = "absolute bg-slate-950/62 backdrop-blur-md";
   const cardStyle: CSSProperties = compactTour
     ? {
         left: "1rem",
@@ -442,14 +477,28 @@ function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step:
         overflowY: "auto",
       };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] overflow-hidden">
+      <div className={backdropClass} style={{ left: 0, top: 0, width: "100vw", height: box.top }} onClick={onClose} />
       <div
-        className="curbflow-tour-spotlight absolute rounded-2xl border-2 border-white bg-transparent shadow-2xl ring-4 ring-red-500/70"
-        style={current.spotlight}
+        className={backdropClass}
+        style={{ left: 0, top: `calc(${box.top} + ${box.height})`, width: "100vw", bottom: 0 }}
+        onClick={onClose}
+      />
+      <div className={backdropClass} style={{ left: 0, top: box.top, width: box.left, height: box.height }} onClick={onClose} />
+      <div
+        className={backdropClass}
+        style={{ left: `calc(${box.left} + ${box.width})`, top: box.top, right: 0, height: box.height }}
+        onClick={onClose}
       />
       <div
-        className="curbflow-tour-card fixed w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl"
+        className="curbflow-tour-spotlight pointer-events-none absolute rounded-2xl border-2 border-white/95 bg-white/5 ring-4 ring-red-500/70"
+        style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+      />
+      <div
+        className="curbflow-tour-card fixed z-10 w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/30"
         style={cardStyle}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
@@ -492,7 +541,8 @@ function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step:
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -412,21 +412,27 @@ function TourOverlay({
 }) {
   const current = steps[step] ?? steps[0];
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState(() => getSpotlightRect(current.selector));
+  const [rect, setRect] = useState<TourRect | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const update = () => setRect(getSpotlightRect(current.selector));
-    update();
     const element = document.querySelector(current.selector);
-    element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-    const timeout = window.setTimeout(update, 260);
+    setRect(null);
+    element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+
+    const update = () => setRect(getSpotlightRect(current.selector));
+    const frame = window.requestAnimationFrame(() => {
+      update();
+      window.requestAnimationFrame(update);
+    });
+    const timeout = window.setTimeout(update, 120);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.clearTimeout(timeout);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
