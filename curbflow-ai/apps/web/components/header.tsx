@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, HelpCircle, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -47,11 +47,18 @@ type TourRect = {
   height: number;
 };
 
+type TourSize = {
+  width: number;
+  height: number;
+};
+
 const TOUR_MARGIN = 16;
 const TOUR_GAP = 18;
 const TOUR_CARD_MAX_WIDTH = 460;
 const TOUR_CARD_MIN_WIDTH = 300;
 const TOUR_CARD_ESTIMATED_HEIGHT = 430;
+const TOUR_SPOTLIGHT_MAX_WIDTH_RATIO = 0.72;
+const TOUR_SPOTLIGHT_MAX_HEIGHT_RATIO = 0.58;
 
 const fallbackTourSteps: TourStep[] = [
   {
@@ -311,25 +318,30 @@ function getSpotlightRect(selector: string): TourRect | null {
   const element = document.querySelector(selector);
   if (!element) return null;
   const rect = element.getBoundingClientRect();
-  const rawTop = rect.top - 8;
-  const rawLeft = rect.left - 8;
-  const rawWidth = Math.min(window.innerWidth - 16, rect.width + 16);
-  const rawHeight = Math.min(window.innerHeight - 16, rect.height + 16);
-  const width = rawWidth;
-  const height = Math.min(rawHeight, Math.min(560, window.innerHeight - 16));
+  const viewport = viewportSize();
+  const maxWidth = Math.max(280, viewport.width * TOUR_SPOTLIGHT_MAX_WIDTH_RATIO);
+  const maxHeight = Math.max(220, viewport.height * TOUR_SPOTLIGHT_MAX_HEIGHT_RATIO);
+  const rawWidth = Math.min(viewport.width - 16, rect.width + 16);
+  const rawHeight = Math.min(viewport.height - 16, rect.height + 16);
+  const width = Math.min(rawWidth, maxWidth);
+  const height = Math.min(rawHeight, Math.min(560, maxHeight, viewport.height - 16));
+  const rawLeft = rect.left + rect.width / 2 - width / 2;
+  const rawTop = rect.top + rect.height / 2 - height / 2;
   return {
-    top: clamp(rawTop + Math.max(0, (rawHeight - height) / 2), 8, Math.max(8, window.innerHeight - height - 8)),
-    left: clamp(rawLeft + Math.max(0, (rawWidth - width) / 2), 8, Math.max(8, window.innerWidth - width - 8)),
+    top: clamp(rawTop, 8, Math.max(8, viewport.height - height - 8)),
+    left: clamp(rawLeft, 8, Math.max(8, viewport.width - width - 8)),
     width,
     height,
   };
 }
 
-function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"]): CSSProperties {
+function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"], measuredSize?: TourSize | null): CSSProperties {
   const viewport = viewportSize();
   const maxWidth = Math.max(TOUR_CARD_MIN_WIDTH, viewport.width - TOUR_MARGIN * 2);
   const defaultWidth = Math.min(TOUR_CARD_MAX_WIDTH, maxWidth);
-  const cardHeight = Math.min(TOUR_CARD_ESTIMATED_HEIGHT, viewport.height - TOUR_MARGIN * 2);
+  const measuredWidth = measuredSize?.width ? Math.min(measuredSize.width, maxWidth) : defaultWidth;
+  const measuredHeight = measuredSize?.height ?? TOUR_CARD_ESTIMATED_HEIGHT;
+  const cardHeight = Math.min(measuredHeight, viewport.height - TOUR_MARGIN * 2);
   const base = (width = defaultWidth): CSSProperties => ({
     position: "fixed",
     width,
@@ -341,11 +353,16 @@ function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"])
   if (!rect) {
     return {
       ...base(),
-      left: clamp((viewport.width - defaultWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - defaultWidth - TOUR_MARGIN)),
+      left: clamp((viewport.width - measuredWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - measuredWidth - TOUR_MARGIN)),
       top: clamp((viewport.height - cardHeight) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN)),
     };
   }
 
+  const hasRoomFor = (left: number, top: number, width = defaultWidth) =>
+    left >= TOUR_MARGIN &&
+    top >= TOUR_MARGIN &&
+    left + width <= viewport.width - TOUR_MARGIN &&
+    top + cardHeight <= viewport.height - TOUR_MARGIN;
   const centeredLeft = clamp(
     rect.left + rect.width / 2 - defaultWidth / 2,
     TOUR_MARGIN,
@@ -360,23 +377,15 @@ function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"])
   const leftSpace = rect.left - TOUR_GAP - TOUR_MARGIN;
   const rightWidth = Math.min(defaultWidth, Math.max(0, rightSpace));
   const leftWidth = Math.min(defaultWidth, Math.max(0, leftSpace));
+  const bottomTop = rect.top + rect.height + TOUR_GAP;
+  const topTop = rect.top - TOUR_GAP - cardHeight;
+  const rightLeft = rect.left + rect.width + TOUR_GAP;
+  const leftLeft = rect.left - TOUR_GAP - leftWidth;
   const options: Record<NonNullable<TourStep["placement"]>, CSSProperties | null> = {
-    bottom:
-      rect.top + rect.height + TOUR_GAP + cardHeight <= viewport.height - TOUR_MARGIN
-        ? { ...base(), left: centeredLeft, top: rect.top + rect.height + TOUR_GAP }
-        : null,
-    top:
-      rect.top - TOUR_GAP - cardHeight >= TOUR_MARGIN
-        ? { ...base(), left: centeredLeft, top: rect.top - TOUR_GAP - cardHeight }
-        : null,
-    right:
-      rightWidth >= TOUR_CARD_MIN_WIDTH
-        ? { ...base(rightWidth), left: rect.left + rect.width + TOUR_GAP, top: sideTop }
-        : null,
-    left:
-      leftWidth >= TOUR_CARD_MIN_WIDTH
-        ? { ...base(leftWidth), left: rect.left - TOUR_GAP - leftWidth, top: sideTop }
-        : null,
+    bottom: hasRoomFor(centeredLeft, bottomTop) ? { ...base(), left: centeredLeft, top: bottomTop } : null,
+    top: hasRoomFor(centeredLeft, topTop) ? { ...base(), left: centeredLeft, top: topTop } : null,
+    right: rightWidth >= TOUR_CARD_MIN_WIDTH && hasRoomFor(rightLeft, sideTop, rightWidth) ? { ...base(rightWidth), left: rightLeft, top: sideTop } : null,
+    left: leftWidth >= TOUR_CARD_MIN_WIDTH && hasRoomFor(leftLeft, sideTop, leftWidth) ? { ...base(leftWidth), left: leftLeft, top: sideTop } : null,
   };
 
   const orderByPlacement: Record<NonNullable<TourStep["placement"]>, Array<NonNullable<TourStep["placement"]>>> = {
@@ -394,7 +403,7 @@ function tourCardStyle(rect: TourRect | null, placement?: TourStep["placement"])
 
   return {
     ...base(),
-    left: clamp((viewport.width - defaultWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - defaultWidth - TOUR_MARGIN)),
+    left: clamp((viewport.width - measuredWidth) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.width - measuredWidth - TOUR_MARGIN)),
     top: clamp((viewport.height - cardHeight) / 2, TOUR_MARGIN, Math.max(TOUR_MARGIN, viewport.height - cardHeight - TOUR_MARGIN)),
   };
 }
@@ -413,6 +422,8 @@ function TourOverlay({
   const current = steps[step] ?? steps[0];
   const [mounted, setMounted] = useState(false);
   const [rect, setRect] = useState<TourRect | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [cardSize, setCardSize] = useState<TourSize | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -421,7 +432,9 @@ function TourOverlay({
   useEffect(() => {
     const element = document.querySelector(current.selector);
     setRect(null);
-    element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+    const scrollBlock: ScrollLogicalPosition =
+      current.placement === "bottom" ? "start" : current.placement === "top" ? "end" : "center";
+    element?.scrollIntoView({ block: scrollBlock, inline: "nearest", behavior: "auto" });
 
     const update = () => setRect(getSpotlightRect(current.selector));
     const frame = window.requestAnimationFrame(() => {
@@ -440,6 +453,21 @@ function TourOverlay({
   }, [current.selector, step]);
 
   useEffect(() => {
+    const element = cardRef.current;
+    if (!element) return;
+
+    const update = () => {
+      const box = element.getBoundingClientRect();
+      setCardSize({ width: box.width, height: box.height });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [step, current.title]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
       if (event.key === "ArrowRight") setStep(Math.min(steps.length - 1, step + 1));
@@ -449,7 +477,7 @@ function TourOverlay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, setStep, step, steps.length]);
 
-  const cardStyle = tourCardStyle(rect, current.placement);
+  const cardStyle = tourCardStyle(rect, current.placement, cardSize);
   const viewport = viewportSize();
   const backdropClass = "absolute bg-slate-950/70 backdrop-blur-lg";
 
@@ -490,6 +518,7 @@ function TourOverlay({
         />
       ) : null}
       <div
+        ref={cardRef}
         className="curbflow-tour-card fixed rounded-xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/30"
         style={cardStyle}
       >

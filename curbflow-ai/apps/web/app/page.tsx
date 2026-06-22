@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { CurbFlowMap } from "@/components/curbflow-map";
@@ -49,13 +49,15 @@ import { type PlannerMode, useCurbFlowStore } from "@/lib/store";
 import { cn, formatDateTime, formatNumber } from "@/lib/utils";
 
 type RiskLevel = "critical" | "high" | "elevated" | "clear";
-type SpotlightBox = {
-  left: string;
-  right: string;
-  top: string;
-  bottom: string;
-  width: string;
-  height: string;
+type TourRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+type TourSize = {
+  width: number;
+  height: number;
 };
 
 const tourSteps = [
@@ -96,6 +98,14 @@ const tourSteps = [
   card: CSSProperties;
 }>;
 
+const VISUAL_TOUR_MARGIN = 16;
+const VISUAL_TOUR_GAP = 18;
+const VISUAL_TOUR_MAX_WIDTH = 420;
+const VISUAL_TOUR_MIN_WIDTH = 300;
+const VISUAL_TOUR_ESTIMATED_HEIGHT = 320;
+const VISUAL_TOUR_SNAPSHOT_MAX_WIDTH = 780;
+const VISUAL_TOUR_SNAPSHOT_MAX_HEIGHT = 440;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -131,33 +141,148 @@ function hasPlaceCoordinates(place: PlaceSuggestion) {
   );
 }
 
-function cssValue(value: CSSProperties[keyof CSSProperties] | undefined, fallback = "0px") {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === "number") return `${value}px`;
-  return String(value);
-}
-
-function spotlightBox(style: CSSProperties): SpotlightBox {
-  const leftValue = cssValue(style.left, "");
-  const rightValue = cssValue(style.right, "");
-  const topValue = cssValue(style.top, "");
-  const bottomValue = cssValue(style.bottom, "");
-  const widthValue = cssValue(style.width, "");
-  const heightValue = cssValue(style.height, "");
-
-  const left = leftValue || (rightValue && widthValue ? `calc(100vw - ${rightValue} - ${widthValue})` : "0px");
-  const right = rightValue || (leftValue && widthValue ? `calc(100vw - ${leftValue} - ${widthValue})` : "0px");
-  const top = topValue || (bottomValue && heightValue ? `calc(100vh - ${bottomValue} - ${heightValue})` : "0px");
-  const bottom = bottomValue || (topValue && heightValue ? `calc(100vh - ${topValue} - ${heightValue})` : "0px");
-  const width = widthValue || `calc(100vw - ${left} - ${right})`;
-  const height = heightValue || `calc(100vh - ${top} - ${bottom})`;
-
-  return { left, right, top, bottom, width, height };
-}
-
 function matchingStationForPlace(place: PlaceSuggestion, stations: string[]) {
   const text = `${place.place_name} ${place.place_address ?? ""}`.toLowerCase();
   return stations.find((station) => text.includes(station.toLowerCase())) ?? "";
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function viewportSize() {
+  if (typeof window === "undefined") return { width: 1440, height: 900 };
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function boundedTourRect(rect: TourRect): TourRect {
+  const viewport = viewportSize();
+  const left = clamp(rect.left, VISUAL_TOUR_MARGIN, Math.max(VISUAL_TOUR_MARGIN, viewport.width - VISUAL_TOUR_MARGIN * 2));
+  const top = clamp(rect.top, VISUAL_TOUR_MARGIN, Math.max(VISUAL_TOUR_MARGIN, viewport.height - VISUAL_TOUR_MARGIN * 2));
+  const width = clamp(rect.width, 80, Math.max(80, viewport.width - left - VISUAL_TOUR_MARGIN));
+  const height = clamp(rect.height, 64, Math.max(64, viewport.height - top - VISUAL_TOUR_MARGIN));
+  return { left, top, width, height };
+}
+
+function snapshotTourRect(rect: TourRect, maxWidth = VISUAL_TOUR_SNAPSHOT_MAX_WIDTH, maxHeight = VISUAL_TOUR_SNAPSHOT_MAX_HEIGHT): TourRect {
+  const viewport = viewportSize();
+  const width = Math.min(rect.width, maxWidth, viewport.width - VISUAL_TOUR_MARGIN * 2);
+  const height = Math.min(rect.height, maxHeight, viewport.height - VISUAL_TOUR_MARGIN * 2);
+  return boundedTourRect({
+    left: rect.left + rect.width / 2 - width / 2,
+    top: rect.top + rect.height / 2 - height / 2,
+    width,
+    height,
+  });
+}
+
+function visualTourRect(step: number): TourRect {
+  const viewport = viewportSize();
+  const compact = viewport.width < 1120 || viewport.height < 720;
+  const leftRail = compact ? VISUAL_TOUR_MARGIN : 384;
+  const rightRail = compact ? VISUAL_TOUR_MARGIN : 408;
+  const mapTop = compact ? 92 : 116;
+  const timelineHeight = compact ? 136 : 162;
+  const centerWidth = Math.max(120, viewport.width - leftRail - rightRail);
+
+  if (step === 1) {
+    return boundedTourRect({
+      left: leftRail,
+      top: viewport.height - timelineHeight - VISUAL_TOUR_MARGIN,
+      width: centerWidth,
+      height: timelineHeight,
+    });
+  }
+
+  if (step === 2) {
+    const width = compact ? Math.min(340, viewport.width - VISUAL_TOUR_MARGIN * 2) : 356;
+    return boundedTourRect({
+      left: VISUAL_TOUR_MARGIN,
+      top: compact ? mapTop : 176,
+      width,
+      height: viewport.height - (compact ? mapTop : 176) - VISUAL_TOUR_MARGIN,
+    });
+  }
+
+  if (step === 3) {
+    const width = compact ? Math.min(360, viewport.width - VISUAL_TOUR_MARGIN * 2) : 388;
+    return boundedTourRect({
+      left: viewport.width - width - VISUAL_TOUR_MARGIN,
+      top: compact ? mapTop : 104,
+      width,
+      height: viewport.height - (compact ? mapTop : 104) - VISUAL_TOUR_MARGIN,
+    });
+  }
+
+  if (step === 4) {
+    return boundedTourRect({
+      left: leftRail,
+      top: VISUAL_TOUR_MARGIN,
+      width: centerWidth,
+      height: compact ? 88 : 96,
+    });
+  }
+
+  return snapshotTourRect({
+    left: leftRail,
+    top: mapTop,
+    width: centerWidth,
+    height: viewport.height - mapTop - timelineHeight - VISUAL_TOUR_MARGIN,
+  });
+}
+
+function visualTourCardStyle(rect: TourRect, measuredSize?: TourSize | null): CSSProperties {
+  const viewport = viewportSize();
+  const maxWidth = Math.max(VISUAL_TOUR_MIN_WIDTH, viewport.width - VISUAL_TOUR_MARGIN * 2);
+  const defaultWidth = Math.min(VISUAL_TOUR_MAX_WIDTH, maxWidth);
+  const measuredWidth = measuredSize?.width ? Math.min(measuredSize.width, maxWidth) : defaultWidth;
+  const measuredHeight = measuredSize?.height ?? VISUAL_TOUR_ESTIMATED_HEIGHT;
+  const cardHeight = Math.min(measuredHeight, viewport.height - VISUAL_TOUR_MARGIN * 2);
+  const sideTop = clamp(
+    rect.top + rect.height / 2 - cardHeight / 2,
+    VISUAL_TOUR_MARGIN,
+    Math.max(VISUAL_TOUR_MARGIN, viewport.height - cardHeight - VISUAL_TOUR_MARGIN),
+  );
+  const centeredLeft = clamp(
+    rect.left + rect.width / 2 - defaultWidth / 2,
+    VISUAL_TOUR_MARGIN,
+    Math.max(VISUAL_TOUR_MARGIN, viewport.width - defaultWidth - VISUAL_TOUR_MARGIN),
+  );
+
+  const candidates = [
+    { left: centeredLeft, top: rect.top + rect.height + VISUAL_TOUR_GAP, width: defaultWidth },
+    { left: centeredLeft, top: rect.top - VISUAL_TOUR_GAP - cardHeight, width: defaultWidth },
+    { left: rect.left - VISUAL_TOUR_GAP - defaultWidth, top: sideTop, width: defaultWidth },
+    { left: rect.left + rect.width + VISUAL_TOUR_GAP, top: sideTop, width: defaultWidth },
+  ];
+
+  const fits = (candidate: (typeof candidates)[number]) =>
+    candidate.left >= VISUAL_TOUR_MARGIN &&
+    candidate.top >= VISUAL_TOUR_MARGIN &&
+    candidate.left + candidate.width <= viewport.width - VISUAL_TOUR_MARGIN &&
+    candidate.top + cardHeight <= viewport.height - VISUAL_TOUR_MARGIN;
+
+  const picked = candidates.find(fits);
+  const fallbackLeft = clamp(
+    (viewport.width - measuredWidth) / 2,
+    VISUAL_TOUR_MARGIN,
+    Math.max(VISUAL_TOUR_MARGIN, viewport.width - measuredWidth - VISUAL_TOUR_MARGIN),
+  );
+  const fallbackTop = clamp(
+    (viewport.height - cardHeight) / 2,
+    VISUAL_TOUR_MARGIN,
+    Math.max(VISUAL_TOUR_MARGIN, viewport.height - cardHeight - VISUAL_TOUR_MARGIN),
+  );
+
+  return {
+    position: "fixed",
+    width: picked?.width ?? defaultWidth,
+    maxWidth: "calc(100vw - 2rem)",
+    maxHeight: "calc(100vh - 2rem)",
+    overflowY: "auto",
+    left: picked?.left ?? fallbackLeft,
+    top: picked?.top ?? fallbackTop,
+  };
 }
 
 function hourFromWindow(value?: string | null) {
@@ -459,45 +584,60 @@ function ZoneBrief({
 
 function TourOverlay({ step, setStep, onClose }: { step: number; setStep: (step: number) => void; onClose: () => void }) {
   const current = tourSteps[step];
-  const compactTour = typeof window !== "undefined" && (window.innerWidth < 1180 || window.innerHeight < 720);
-  const box = spotlightBox(current.spotlight);
+  const rect = visualTourRect(step);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [cardSize, setCardSize] = useState<TourSize | null>(null);
   const backdropClass = "absolute bg-slate-950/62 backdrop-blur-md";
-  const cardStyle: CSSProperties = compactTour
-    ? {
-        left: "1rem",
-        right: "1rem",
-        bottom: "1rem",
-        width: "auto",
-        maxHeight: "calc(100vh - 2rem)",
-        overflowY: "auto",
-      }
-    : {
-        ...current.card,
-        maxHeight: "calc(100vh - 2rem)",
-        overflowY: "auto",
-      };
+  const viewport = viewportSize();
+  const cardStyle = visualTourCardStyle(rect, cardSize);
+
+  useEffect(() => {
+    const element = cardRef.current;
+    if (!element) return;
+
+    const update = () => {
+      const box = element.getBoundingClientRect();
+      setCardSize({ width: box.width, height: box.height });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [step, current.title]);
 
   if (typeof document === "undefined") return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] overflow-hidden">
-      <div className={backdropClass} style={{ left: 0, top: 0, width: "100vw", height: box.top }} onClick={onClose} />
+      <div className={backdropClass} style={{ left: 0, top: 0, width: viewport.width, height: rect.top }} onClick={onClose} />
       <div
         className={backdropClass}
-        style={{ left: 0, top: `calc(${box.top} + ${box.height})`, width: "100vw", bottom: 0 }}
+        style={{
+          left: 0,
+          top: rect.top + rect.height,
+          width: viewport.width,
+          height: Math.max(0, viewport.height - rect.top - rect.height),
+        }}
         onClick={onClose}
       />
-      <div className={backdropClass} style={{ left: 0, top: box.top, width: box.left, height: box.height }} onClick={onClose} />
+      <div className={backdropClass} style={{ left: 0, top: rect.top, width: rect.left, height: rect.height }} onClick={onClose} />
       <div
         className={backdropClass}
-        style={{ left: `calc(${box.left} + ${box.width})`, top: box.top, right: 0, height: box.height }}
+        style={{
+          left: rect.left + rect.width,
+          top: rect.top,
+          width: Math.max(0, viewport.width - rect.left - rect.width),
+          height: rect.height,
+        }}
         onClick={onClose}
       />
       <div
         className="curbflow-tour-spotlight pointer-events-none absolute rounded-2xl border-2 border-white/95 bg-white/5 ring-4 ring-red-500/70"
-        style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+        style={rect}
       />
       <div
+        ref={cardRef}
         className="curbflow-tour-card fixed z-10 w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/30"
         style={cardStyle}
       >

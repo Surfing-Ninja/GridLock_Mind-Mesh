@@ -504,3 +504,687 @@ The repository ignores:
 - macOS and editor metadata.
 
 Commit source code, configuration, documentation, tests, and lightweight scaffold files only.
+
+## Reviewer Runbook: Train, Build, Launch, and Test
+
+This section is written for a reviewer starting from a fresh clone. It covers the complete local path from raw CSV to trained models, seeded DuckDB, FastAPI, and the Next.js dashboard.
+
+### 1. Clone and Enter the Repository
+
+```bash
+git clone https://github.com/Surfing-Ninja/GridLock_Mind-Mesh.git
+cd GridLock_Mind-Mesh
+```
+
+The repository has one Python dependency file at the repository root:
+
+```text
+GridLock_Mind-Mesh/requirements.txt
+```
+
+The runnable CurbFlow project lives inside:
+
+```text
+GridLock_Mind-Mesh/curbflow-ai/
+```
+
+Most Python scripts and Makefile commands must be run from `curbflow-ai/`.
+
+### 2. Check Required Runtime Versions
+
+Use Python 3.10 or newer. Python 3.11 or 3.12 is recommended for reviewer machines. Node.js 20 or newer is recommended for the frontend.
+
+```bash
+python3 --version
+node --version
+npm --version
+```
+
+If your machine uses `python` instead of `python3`, replace `python3` with `python` in the commands below. If `python` is missing on Linux or Hugging Face, use `python3`.
+
+### 3. Create a Python Environment
+
+From the repository root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+```
+
+On macOS, if LightGBM fails to import because OpenMP is missing, install `libomp` and reinstall dependencies:
+
+```bash
+brew install libomp
+python -m pip install --force-reinstall lightgbm
+```
+
+### 4. Configure Environment Variables
+
+Create a local `.env` file from the example:
+
+```bash
+cd curbflow-ai
+cp .env.example .env
+```
+
+The default local settings are enough for normal review. The important values are:
+
+```text
+CURBFLOW_RAW_CSV_PATH=data/raw/police_parking_violations_nov2023_apr2024.csv
+CURBFLOW_DB_PATH=data/app/curbflow.duckdb
+CURBFLOW_DUCKDB_PATH=data/app/curbflow.duckdb
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_BASE_URL=/api
+NEXT_PUBLIC_API_BASE=/api
+```
+
+Mappls/MapMyIndia place search is optional. If you have a token, put it in `.env`:
+
+```text
+CURBFLOW_MAPPLS_ACCESS_TOKEN=your_mappls_token_here
+```
+
+Do not commit `.env`.
+
+### 5. Place the Theme 1 CSV
+
+CurbFlow uses only the Theme 1 police parking violation CSV. Put the CSV here:
+
+```text
+curbflow-ai/data/raw/police_parking_violations_nov2023_apr2024.csv
+```
+
+Example:
+
+```bash
+mkdir -p data/raw
+cp "/path/to/theme1_police_violation_file.csv" data/raw/police_parking_violations_nov2023_apr2024.csv
+```
+
+If the CSV has a different filename, either rename it to the expected filename or pass `--input-csv` when running the pipeline:
+
+```bash
+python scripts/run_full_pipeline.py --input-csv "/path/to/your/file.csv" --fast-demo --skip-deep
+```
+
+### 6. Install Frontend Dependencies
+
+From `curbflow-ai/`:
+
+```bash
+cd apps/web
+npm install
+cd ../..
+```
+
+If you want exact lockfile installation instead of dependency resolution:
+
+```bash
+cd apps/web
+npm ci
+cd ../..
+```
+
+### 7. Run the Fast Reviewer Pipeline
+
+Use this path when you want the dashboard artifacts quickly. It runs preprocessing, audit, PFDI scoring, zoning, feature engineering, graph building, LightGBM ranker training, prediction, recommendations, and DuckDB seeding. It skips expensive BE-STHGT training.
+
+Run from `curbflow-ai/`:
+
+```bash
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+Then rebuild the app database and precomputed summaries:
+
+```bash
+python scripts/seed_demo_db.py --rebuild
+python scripts/precompute_zone_summaries.py
+```
+
+Equivalent Makefile commands:
+
+```bash
+make setup
+make ci
+make db
+```
+
+Use `make ci` only after the raw CSV is in place. It runs tests and a fast-demo pipeline.
+
+### 8. Run Full Model Training
+
+Full training is slower and should be run after the feature pipeline has created `data/processed/model_training_table.parquet` and adjacency matrices.
+
+Recommended full sequence:
+
+```bash
+python scripts/run_full_pipeline.py --skip-deep --skip-ranker
+python scripts/run_train_deep.py --device cpu --epochs 80 --batch-size 8
+python scripts/run_train_ranker.py
+python scripts/run_model_benchmark.py --models lightgbm,catboost,xgboost --iterations 800
+python scripts/run_predict.py
+python scripts/run_recommendations.py
+python scripts/seed_demo_db.py --rebuild
+python scripts/precompute_zone_summaries.py
+```
+
+If CUDA is available:
+
+```bash
+python scripts/run_train_deep.py --device cuda --epochs 80 --batch-size 8
+```
+
+If running on an Apple Silicon Mac and PyTorch MPS is available:
+
+```bash
+python scripts/run_train_deep.py --device mps --epochs 80 --batch-size 8
+```
+
+For a short smoke training run:
+
+```bash
+python scripts/run_train_deep.py --device cpu --epochs 3 --batch-size 4 --patience 2
+python scripts/run_train_ranker.py --n-estimators 100
+python scripts/run_predict.py
+python scripts/run_recommendations.py
+python scripts/seed_demo_db.py --rebuild
+```
+
+You can also run deep training inside the full pipeline:
+
+```bash
+python scripts/run_full_pipeline.py --train-deep
+```
+
+Do not combine `--train-deep` and `--skip-deep`.
+
+### 9. Verify Generated Artifacts
+
+From `curbflow-ai/`, run:
+
+```bash
+test -f data/interim/violations_clean.parquet
+test -f data/interim/row_scores.parquet
+test -f data/interim/zone_assignments.parquet
+test -f data/processed/zones.geojson
+test -f data/processed/zone_time_features.parquet
+test -f data/processed/model_training_table.parquet
+test -f artifacts/models/adjacency_matrices/A_geo.npy
+test -f artifacts/models/ranker_lgbm.txt
+test -f artifacts/metrics/ranker_metrics.json
+test -f data/processed/predictions.parquet
+test -f data/processed/recommendations.parquet
+test -f data/app/curbflow.duckdb
+```
+
+If full deep training was run, also check:
+
+```bash
+test -f artifacts/models/be_sthgt_model.pt
+test -f artifacts/models/model_metadata.json
+test -f artifacts/metrics/deep_metrics.json
+test -f data/processed/deep_predictions.parquet
+```
+
+Optional benchmark artifact:
+
+```bash
+test -f artifacts/metrics/model_benchmark_metrics.json
+```
+
+### 10. Run Tests
+
+From `curbflow-ai/`:
+
+```bash
+python -m pytest -q
+```
+
+Or:
+
+```bash
+make test
+```
+
+### 11. Start the FastAPI Backend
+
+Open a new terminal:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai
+source ../.venv/bin/activate
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
+```
+
+Verify:
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/audit/summary
+curl "http://127.0.0.1:8000/hotspots?top_k=5"
+```
+
+Expected `/health` fields include:
+
+```text
+status=ok
+database_available=true
+ranker_model_available=true
+```
+
+If BE-STHGT was fully trained, `deep_model_available` should be `true`.
+
+### 12. Start the Next.js Frontend
+
+Open a second terminal:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai/apps/web
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+Open:
+
+```text
+http://127.0.0.1:3000
+```
+
+If port `3000` is busy, use `3002`:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run dev -- --hostname 127.0.0.1 --port 3002
+```
+
+Open:
+
+```text
+http://127.0.0.1:3002
+```
+
+### 13. Reviewer Walkthrough
+
+After both servers are running, test these pages:
+
+```text
+/                         Map-first command center
+/audit                    Data quality, evidence gap, and model value
+/hotspots                 Observed hotspot map
+/blindspots               Evening blindspot audit map
+/junction-basins          Hidden junction spillover
+/patrol-digital-twin      Patrol myopia and route coverage
+/planner                  Resource-constrained enforcement plan
+```
+
+Suggested review flow:
+
+1. Open `/audit` and confirm total rows, actual date range, null outcome columns, and evening gap.
+2. Open `/` and use the visual tour.
+3. Select a place or station on the map and confirm the map focuses on that region.
+4. Open `/hotspots` and inspect the observed red hotspot layer.
+5. Open `/blindspots` and inspect evening audit candidates.
+6. Open `/patrol-digital-twin` and confirm route coverage is aggregate-only.
+7. Open `/planner`, use 20 officers and 4 tow units, choose balanced mode, and run recommendations.
+8. Submit one feedback form from a planner row and confirm the success message.
+
+### 14. Production-Style Local Build Check
+
+Frontend build:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai/apps/web
+npm run build
+```
+
+Run built frontend against local API:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run start -- --hostname 127.0.0.1 --port 3000
+```
+
+### 15. One-Command Docker/Hugging Face Style Check
+
+The root `Dockerfile` starts FastAPI internally and serves the Next.js frontend on the container port.
+
+From the repository root:
+
+```bash
+docker build -t curbflow-ai .
+docker run --rm -p 7860:7860 curbflow-ai
+```
+
+Open:
+
+```text
+http://127.0.0.1:7860
+```
+
+For a real deployment, generated artifacts or a seeded demo database must be present in the image or generated during build. The raw CSV should not be committed.
+
+## Reviewer Troubleshooting and Edge Cases
+
+Keep this section at the end of the README so the normal test path stays readable.
+
+### `requirements.txt` Not Found
+
+Cause: You are inside `curbflow-ai/` but tried to install dependencies from the wrong path.
+
+Fix from repository root:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Fix from `curbflow-ai/`:
+
+```bash
+python -m pip install -r ../requirements.txt
+```
+
+### `python: command not found`
+
+Use `python3`:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+On Linux containers, install Python if needed:
+
+```bash
+apt-get update
+apt-get install -y python3 python3-pip python3-venv
+```
+
+### Raw CSV Missing
+
+Error usually looks like:
+
+```text
+Raw Theme 1 police violation CSV not found
+```
+
+Fix:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai
+mkdir -p data/raw
+cp "/path/to/csv.csv" data/raw/police_parking_violations_nov2023_apr2024.csv
+```
+
+Or pass the path explicitly:
+
+```bash
+python scripts/run_full_pipeline.py --input-csv "/path/to/csv.csv" --fast-demo --skip-deep
+```
+
+### `ModuleNotFoundError: No module named 'curbflow'`
+
+Cause: command was run from the wrong directory or `PYTHONPATH` is missing.
+
+Preferred fix:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+Alternative:
+
+```bash
+export PYTHONPATH="$PWD/src:$PWD"
+```
+
+### API Shows Empty Values
+
+Cause: DuckDB was not seeded after generating artifacts, or the frontend is pointing at the wrong backend.
+
+Fix:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai
+python scripts/seed_demo_db.py --rebuild
+python scripts/precompute_zone_summaries.py
+curl http://127.0.0.1:8000/health
+```
+
+Then restart the frontend with:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+### DuckDB Serialization or Schema Error
+
+Cause: old generated database file does not match current generated Parquet schema.
+
+Fix from `curbflow-ai/`:
+
+```bash
+rm -f data/app/curbflow.duckdb
+python scripts/seed_demo_db.py --rebuild
+python scripts/precompute_zone_summaries.py
+```
+
+This removes only the generated app database. It does not remove the raw CSV.
+
+### Port Already in Use
+
+Check the listener:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+```
+
+Do not kill unrelated processes on a review machine. Use another frontend port:
+
+```bash
+npm run dev -- --hostname 127.0.0.1 --port 3002
+```
+
+If backend port `8000` is busy:
+
+```bash
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8010
+```
+
+Then point the frontend proxy to that backend:
+
+```bash
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8010 npm run dev -- --hostname 127.0.0.1 --port 3002
+```
+
+### Frontend Cannot Reach Backend
+
+Check backend directly:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Check frontend proxy:
+
+```bash
+curl http://127.0.0.1:3000/api/health
+```
+
+If backend works but proxy fails, restart frontend with:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+### CORS Error
+
+For local development, make sure `.env` includes the frontend origin:
+
+```text
+CURBFLOW_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3002","http://127.0.0.1:3002"]
+```
+
+Restart FastAPI after changing `.env`.
+
+### `next: command not found`
+
+Install frontend dependencies:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai/apps/web
+npm install
+```
+
+Then run:
+
+```bash
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+### `npm ci` Fails
+
+Use `npm install` if the lockfile and local npm version disagree:
+
+```bash
+npm install
+```
+
+For clean reinstall:
+
+```bash
+rm -rf node_modules .next
+npm install
+```
+
+### LightGBM, CatBoost, or XGBoost Benchmark Fails
+
+The benchmark script is optional. By default it records failures and continues unless `--strict` is used.
+
+Run only LightGBM:
+
+```bash
+python scripts/run_model_benchmark.py --models lightgbm --iterations 300
+```
+
+Run all and fail on any missing optional package:
+
+```bash
+python scripts/run_model_benchmark.py --models lightgbm,catboost,xgboost --iterations 800 --strict
+```
+
+Install optional packages again if needed:
+
+```bash
+python -m pip install lightgbm catboost xgboost
+```
+
+### BE-STHGT Training Is Slow
+
+Use fast-demo mode for dashboard review:
+
+```bash
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+Use a smoke run:
+
+```bash
+python scripts/run_train_deep.py --device cpu --epochs 3 --batch-size 4 --patience 2
+```
+
+Use a GPU if available:
+
+```bash
+python scripts/run_train_deep.py --device cuda --epochs 80 --batch-size 8
+```
+
+### CUDA Out of Memory
+
+Reduce batch size and optionally reduce hidden model load through config edits:
+
+```bash
+python scripts/run_train_deep.py --device cuda --epochs 80 --batch-size 2 --patience 10
+```
+
+If still failing, use CPU/MPS or run fast-demo:
+
+```bash
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+### Apple Silicon MPS Issues
+
+If MPS errors occur, use CPU:
+
+```bash
+python scripts/run_train_deep.py --device cpu --epochs 10 --batch-size 4
+```
+
+### Parquet or PyArrow Error
+
+Install or reinstall PyArrow:
+
+```bash
+python -m pip install --upgrade pyarrow pandas
+```
+
+Then rerun the failed stage.
+
+### Generated Artifacts Are Stale
+
+Clean generated app artifacts but keep the raw CSV:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai
+rm -rf data/interim data/processed data/app artifacts/models artifacts/metrics artifacts/reports
+mkdir -p data/raw data/interim data/processed data/app artifacts/models artifacts/metrics artifacts/reports
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+```
+
+Do not delete `data/raw/police_parking_violations_nov2023_apr2024.csv` unless you intend to replace the dataset.
+
+### Reviewer Wants Only the Dashboard, Not Training
+
+Use the fast path:
+
+```bash
+cd GridLock_Mind-Mesh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cd curbflow-ai
+cp .env.example .env
+mkdir -p data/raw
+cp "/path/to/csv.csv" data/raw/police_parking_violations_nov2023_apr2024.csv
+python scripts/run_full_pipeline.py --fast-demo --skip-deep
+python scripts/seed_demo_db.py --rebuild
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
+```
+
+Then in another terminal:
+
+```bash
+cd GridLock_Mind-Mesh/curbflow-ai/apps/web
+npm install
+NEXT_PUBLIC_API_BASE_URL=/api \
+NEXT_PUBLIC_API_BASE=/api \
+CURBFLOW_API_INTERNAL_URL=http://127.0.0.1:8000 \
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
